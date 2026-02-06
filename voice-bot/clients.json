@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "company": "Tech Corp",
+    "contact": "John Doe",
+    "phone": "+18015550100",
+    "status": "PENDING"
+  },
+  {
+    "id": 2,
+    "company": "Utah Dental",
+    "contact": "Jane Smith",
+    "phone": "+18015550101",
+    "status": "PENDING"
+  },
+  {
+    "id": 3,
+    "company": "Ski Resort Inc",
+    "contact": "Mike Johnson",
+    "phone": "+18015550102",
+    "status": "PENDING"
+  }
+]

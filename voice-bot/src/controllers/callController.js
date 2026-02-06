@@ -1,29 +1,6 @@
 import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
-import twilio from 'twilio';
 import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
-
-const VoiceResponse = twilio.twiml.VoiceResponse;
-
-export const inboundCall = (req, res) => {
-  try {
-    logger.info('Incoming call received');
-    const response = new VoiceResponse();
-    const connect = response.connect();
-    const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
-    });
-
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
-
-    res.type('text/xml');
-    res.send(response.toString());
-  } catch (error) {
-    logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
-  }
-};
+import { notifyCallEnded } from '../services/dripService.js';
 
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
@@ -46,7 +23,7 @@ export const handleWebSocket = (ws, req) => {
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
@@ -59,5 +36,7 @@ export const handleWebSocket = (ws, req) => {
     if (openAIService.openaiWs) {
         openAIService.openaiWs.close();
     }
+    // Notify Drip Service that call ended
+    notifyCallEnded();
   });
 };
