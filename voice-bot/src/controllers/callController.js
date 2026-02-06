@@ -2,6 +2,7 @@ import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
 import { config } from '../config/config.js';
+import { URL } from 'url';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -10,12 +11,10 @@ export const inboundCall = (req, res) => {
     logger.info('Incoming call received');
     const response = new VoiceResponse();
     const connect = response.connect();
+    // Add type=inbound to the stream URL so the WebSocket knows which persona to load
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream?type=inbound`,
     });
-
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
 
     res.type('text/xml');
     res.send(response.toString());
@@ -25,14 +24,41 @@ export const inboundCall = (req, res) => {
   }
 };
 
+export const outboundCall = (req, res) => {
+  try {
+    logger.info('Outbound call connected, starting stream...');
+    const response = new VoiceResponse();
+    const connect = response.connect();
+    // Add type=outbound to the stream URL
+    const stream = connect.stream({
+      url: `wss://${req.headers.host}/voice/stream?type=outbound`,
+    });
+
+    res.type('text/xml');
+    res.send(response.toString());
+  } catch (error) {
+    logger.error('Error handling outbound call:', error);
+    res.status(500).send('Internal Server Error');
+  }
+};
+
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
+  // Parse query parameters to determine call type
+  let callType = 'outbound';
+  try {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+    callType = parsedUrl.searchParams.get('type') || 'outbound';
+  } catch (error) {
+    logger.warn('Failed to parse WebSocket URL params, defaulting to outbound:', error);
+  }
+
+  logger.info(`Initializing OpenAI Service with call type: ${callType}`);
+
   let callSid = 'unknown';
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
+  const openAIService = new OpenAIRealtimeService(ws, callSid, callType);
   openAIService.connect();
 
   ws.on('message', (message) => {
@@ -46,7 +72,7 @@ export const handleWebSocket = (ws, req) => {
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
