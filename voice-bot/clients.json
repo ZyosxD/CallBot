@@ -1,0 +1,5 @@
+[
+  { "id": 1, "name": "John Doe", "phone": "+18015550100", "company": "Tech Corp", "status": "PENDING" },
+  { "id": 2, "name": "Jane Smith", "phone": "+18015550101", "company": "Innovate LLC", "status": "PENDING" },
+  { "id": 3, "name": "Bob Johnson", "phone": "+18015550102", "company": "Solutions Inc", "status": "CALLED" }
+]
