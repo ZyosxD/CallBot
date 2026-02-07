@@ -54,8 +54,10 @@ export const checkAndCall = async () => {
         return;
     }
 
+    // Encode phone for URL safety (although it's just numbers usually)
+    const encodedPhone = encodeURIComponent(client.phone);
     await twilioClient.calls.create({
-      url: `${config.server.publicUrl}/voice/outbound-twiml`,
+      url: `${config.server.publicUrl}/voice/outbound-twiml?phone=${encodedPhone}`,
       to: client.phone,
       from: config.twilio.phoneNumber,
     });

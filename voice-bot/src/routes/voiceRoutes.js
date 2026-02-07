@@ -11,8 +11,11 @@ export default async function voiceRoutes(fastify, options) {
     const connect = response.connect();
     // Use the host from the request to construct the WSS URL
     const host = request.headers.host;
+    // Get CallerID from Twilio POST body
+    const callerId = request.body.From || 'Unknown';
+
     connect.stream({
-      url: `wss://${host}/voice/stream`,
+      url: `wss://${host}/voice/stream?phone=${encodeURIComponent(callerId)}`,
     });
 
     reply.type('text/xml');
@@ -23,12 +26,13 @@ export default async function voiceRoutes(fastify, options) {
   // This endpoint is fetched by Twilio when the call connects
   fastify.post('/outbound-twiml', async (request, reply) => {
       const response = new VoiceResponse();
-      // Optional: Add a pause or greeting if needed, but Stream connects immediately usually
       const connect = response.connect();
       const host = request.headers.host;
+      // Get phone from query param (sent by dripService)
+      const phone = request.query.phone || 'Unknown';
 
       connect.stream({
-        url: `wss://${host}/voice/stream`,
+        url: `wss://${host}/voice/stream?phone=${encodeURIComponent(phone)}`,
       });
 
       reply.type('text/xml');
@@ -40,8 +44,10 @@ export default async function voiceRoutes(fastify, options) {
       const response = new VoiceResponse();
       const connect = response.connect();
       const host = request.headers.host;
+      const phone = request.query.phone || 'Unknown';
+
       connect.stream({
-        url: `wss://${host}/voice/stream`,
+        url: `wss://${host}/voice/stream?phone=${encodeURIComponent(phone)}`,
       });
       reply.type('text/xml');
       return response.toString();

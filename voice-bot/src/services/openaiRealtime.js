@@ -6,9 +6,10 @@ import logger, { logConversation } from '../utils/logger.js';
 import { sendSuccessEmail, sendReportEmail } from './emailService.js';
 
 export class OpenAIRealtimeService {
-  constructor(ws, callSid) {
+  constructor(ws, callSid, customerPhone) {
     this.ws = ws;
     this.callSid = callSid;
+    this.customerPhone = customerPhone;
     this.openaiWs = null;
     this.streamSid = null;
   }
@@ -149,22 +150,22 @@ export class OpenAIRealtimeService {
         // Save to leads.json
         const leadsData = await fs.readFile('leads.json', 'utf8');
         const leads = JSON.parse(leadsData);
-        leads.push({ ...parsedArgs, callSid: this.callSid, timestamp: new Date().toISOString() });
+        leads.push({ ...parsedArgs, callSid: this.callSid, customerPhone: this.customerPhone, timestamp: new Date().toISOString() });
         await fs.writeFile('leads.json', JSON.stringify(leads, null, 2));
 
         // Email
-        await sendSuccessEmail({ ...parsedArgs, confirmedPhone: parsedArgs.phone });
+        await sendSuccessEmail({ ...parsedArgs, phone: this.customerPhone, confirmedPhone: parsedArgs.phone });
         result = { message: "Appointment scheduled and saved." };
 
       } else if (name === 'report_interaction') {
         // Save to clients_log.json
         const logData = await fs.readFile('clients_log.json', 'utf8');
         const logs = JSON.parse(logData);
-        logs.push({ ...parsedArgs, callSid: this.callSid, timestamp: new Date().toISOString() });
+        logs.push({ ...parsedArgs, callSid: this.callSid, customerPhone: this.customerPhone, timestamp: new Date().toISOString() });
         await fs.writeFile('clients_log.json', JSON.stringify(logs, null, 2));
 
         // Email
-        await sendReportEmail({ ...parsedArgs, phone: 'See Logs' });
+        await sendReportEmail({ ...parsedArgs, phone: this.customerPhone });
         result = { message: "Interaction reported." };
 
       } else if (name === 'end_call') {

@@ -5,11 +5,15 @@ import { notifyCallEnded } from '../services/dripService.js';
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
+  // Extract phone (CallerID) from query parameters
+  const customerPhone = req.query.phone || 'Unknown';
+  logger.info(`Customer Phone: ${customerPhone}`);
+
   // We can extract CallSid from the query params if we added it in the TwiML url
   // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
+  const openAIService = new OpenAIRealtimeService(ws, callSid, customerPhone);
   openAIService.connect();
 
   ws.on('message', (message) => {
