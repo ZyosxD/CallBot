@@ -94,6 +94,13 @@ TWILIO_PHONE_NUMBER=+1234567890
 # 🌐 Tu URL pública (Ngrok o Dominio real)
 # No olvides incluir 'https://' y sin barra al final
 PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+
+# 📧 Configuración de Email (SMTP)
+NOTIFICATION_EMAIL=tu-email@dominio.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tu-usuario@gmail.com
+SMTP_PASS=tu-contraseña-app
 ```
 
 ---
@@ -122,7 +129,7 @@ npm run dev
 Verás: `Server is running on port 3000` ✅
 
 ### 3. ¡Llama a tu Bot! 📱
-Marca a tu número de Twilio. ¡Jules debería contestarte!
+Marca a tu número de Twilio. ¡Sarah debería contestarte!
 
 ---
 
