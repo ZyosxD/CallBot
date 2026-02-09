@@ -1,35 +1,59 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import formBody from '@fastify/formbody';
+import websocket from '@fastify/websocket';
 import { config } from './config/config.js';
-import router from './controllers/router.js';
-import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { handleInboundCall, handleWebSocket, handleCallStatus } from './controllers/callController.js';
+import { initScheduler } from './services/scheduler.js';
+import { initDataFiles } from './services/leadService.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+const fastify = Fastify({
+  logger: false // We use our own logger
+});
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Register plugins
+fastify.register(formBody);
+fastify.register(websocket);
 
 // Routes
-app.use('/voice', router);
-
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+fastify.get('/', async (request, reply) => {
+  return { status: 'online', service: 'Voice Bot (Sarah)' };
 });
 
-// Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+fastify.get('/health', async (request, reply) => {
+  return { status: 'ok' };
 });
 
-// Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
+// Twilio Webhook for Incoming Calls (Inbound & Outbound TwiML)
+fastify.all('/voice/incoming', handleInboundCall);
+
+// Twilio Status Callback
+fastify.all('/voice/status', handleCallStatus);
+
+// WebSocket Stream
+fastify.register(async function (fastify) {
+  fastify.get('/voice/stream', { websocket: true }, (connection, req) => {
+    handleWebSocket(connection, req);
+  });
 });
+
+// Start Server
+const start = async () => {
+  try {
+    // Initialize Data Files
+    await initDataFiles();
+
+    // Start Server
+    await fastify.listen({ port: config.server.port, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${config.server.port}`);
+
+    // Initialize Scheduler (Drip Service)
+    initScheduler();
+
+  } catch (err) {
+    logger.error('Error starting server:', err);
+    process.exit(1);
+  }
+};
+
+start();

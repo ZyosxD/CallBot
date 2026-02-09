@@ -9,10 +9,14 @@
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
+    "@fastify/formbody": "^7.4.0",
+    "@fastify/websocket": "^8.3.1",
     "axios": "^1.6.0",
     "dayjs": "^1.11.10",
     "dotenv": "^16.4.0",
-    "express": "^4.18.0",
+    "fastify": "^4.26.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.9",
     "openai": "^4.28.0",
     "twilio": "^5.0.0",
     "uuid": "^9.0.0",
