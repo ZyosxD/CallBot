@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
+import { initScheduler } from './services/scheduler.js';
 import logger from './utils/logger.js';
 
 const app = express();
@@ -32,4 +33,7 @@ app.use((err, req, res, next) => {
 const PORT = config.server.port;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
+
+  // Initialize Drip Scheduler
+  initScheduler();
 });
