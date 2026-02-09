@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "contact": "John Doe",
+    "phone": "+15551234567",
+    "status": "PENDING",
+    "attempts": 0
+  },
+  {
+    "id": 2,
+    "name": "Globex Inc",
+    "contact": "Jane Smith",
+    "phone": "+15559876543",
+    "status": "PENDING",
+    "attempts": 0
+  }
+]
