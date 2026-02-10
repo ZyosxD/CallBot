@@ -1,0 +1,9 @@
+[
+  {
+    "id": "1",
+    "name": "John Doe",
+    "phone": "+18015550101",
+    "status": "PENDING",
+    "timezone": "America/Denver"
+  }
+]
