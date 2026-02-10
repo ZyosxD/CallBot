@@ -1,35 +1,52 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import websocket from '@fastify/websocket';
+import formbody from '@fastify/formbody';
 import { config } from './config/config.js';
-import router from './controllers/router.js';
-import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { incomingCall, outboundTwiml, handleWebSocket, callStatus } from './controllers/callController.js';
+import { initScheduler } from './services/scheduler.js';
+import { validateTwilioRequest } from './utils/twilioValidator.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+const fastify = Fastify({ logger: true });
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Register plugins
+fastify.register(websocket);
+fastify.register(formbody);
 
 // Routes
-app.use('/voice', router);
-
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+fastify.get('/', async (request, reply) => {
+  return { hello: 'world' };
 });
 
-// Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+// Incoming Call (Twilio Voice Webhook)
+fastify.all('/voice/incoming', { preHandler: validateTwilioRequest }, incomingCall);
+
+// Outbound TwiML (for Drip calls)
+fastify.all('/voice/outbound-twiml', { preHandler: validateTwilioRequest }, outboundTwiml);
+
+// Status Callback (Twilio Status)
+fastify.all('/voice/status', { preHandler: validateTwilioRequest }, callStatus);
+
+// WebSocket Stream
+fastify.register(async (fastify) => {
+  fastify.get('/voice/stream', { websocket: true }, (connection, req) => {
+    handleWebSocket(connection, req);
+  });
 });
 
 // Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+const start = async () => {
+  try {
+    await fastify.listen({ port: config.server.port, host: '0.0.0.0' });
+    logger.info(`Server listening on ${fastify.server.address().port}`);
+
+    // Initialize Scheduler
+    initScheduler();
+
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();
