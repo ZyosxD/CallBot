@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "phone": "+18015550101",
+    "status": "PENDING"
+  },
+  {
+    "id": 2,
+    "name": "Globex Inc",
+    "phone": "+18015550102",
+    "status": "PENDING"
+  },
+  {
+    "id": 3,
+    "name": "Soylent Corp",
+    "phone": "+18015550103",
+    "status": "PENDING"
+  }
+]
