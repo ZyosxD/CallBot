@@ -1,5 +1,5 @@
 import express from 'express';
-import { inboundCall } from './callController.js';
+import { inboundCall, outboundCall, callStatus } from './callController.js';
 import { validateTwilioRequest } from '../utils/twilioValidator.js';
 
 const router = express.Router();
@@ -7,5 +7,13 @@ const router = express.Router();
 // POST /voice/inbound
 // Validates Twilio signature and returns TwiML to connect to WebSocket
 router.post('/inbound', validateTwilioRequest, inboundCall);
+
+// POST /voice/outbound-twiml
+// Used for outbound calls initiated by the bot
+router.post('/outbound-twiml', validateTwilioRequest, outboundCall);
+
+// POST /voice/status
+// Webhook for call status updates
+router.post('/status', validateTwilioRequest, callStatus);
 
 export default router;
