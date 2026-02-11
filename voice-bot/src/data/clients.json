@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "name": "John Doe",
+    "company": "Tech Solutions Inc.",
+    "phone": "+15550100001",
+    "status": "PENDING"
+  },
+  {
+    "id": 2,
+    "name": "Jane Smith",
+    "company": "Global Corp",
+    "phone": "+15550100002",
+    "status": "PENDING"
+  },
+  {
+    "id": 3,
+    "name": "Bob Johnson",
+    "company": "Small Biz LLC",
+    "phone": "+15550100003",
+    "status": "CALLED"
+  }
+]
