@@ -1,7 +1,7 @@
-# 🤖 Voice Bot con OpenAI Realtime & Twilio 📞
+# 🤖 Sarah (1Wire Assistant) - Voice Bot 📞
 
 ¡Bienvenido a tu **Voice Bot** de última generación! 🚀
-Este proyecto es un asistente de voz inteligente capaz de atender llamadas telefónicas en tiempo real, hablar en inglés y español, agendar citas y responder preguntas frecuentes. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
+Este proyecto implementa a **Sarah**, una asistente de voz inteligente diseñada para ventas outbound (Cold Calling) y recepción inbound (Ventas). Utiliza la API Realtime de OpenAI y Twilio.
 
 ---
 
@@ -20,12 +20,16 @@ Este proyecto es un asistente de voz inteligente capaz de atender llamadas telef
 
 ## 🌟 Características
 
-*   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI.
-*   **Bilingüe**: Detecta y habla Español 🇪🇸 e Inglés 🇺🇸 automáticamente.
-*   **Inteligente**: Responde preguntas frecuentes (FAQs) 🧠.
-*   **Agenda Citas**: Gestiona reservas de horas y fechas 📅.
-*   **Transferencias**: Pasa la llamada a un humano si es necesario 👤.
-*   **Logs**: Guarda registro de todo lo que sucede 📝.
+*   **Smart Drip (Outbound)**: Estrategia de llamadas automáticas inteligente.
+    *   Lee de `src/data/clients.json`.
+    *   Respeta horarios de operación: 9:30-11:30 y 14:30-15:30 (Mountain Time).
+    *   Gestiona concurrencia (una llamada a la vez).
+*   **Receptionist Mode (Inbound)**: Atiende llamadas entrantes con un enfoque agresivo en ventas (0 a 100).
+*   **Real-time Audio**: Conversaciones fluidas con latencia mínima usando OpenAI Realtime API.
+*   **Email Reports**: Notificaciones automáticas por correo electrónico.
+    *   🟢 **Verde**: Nuevo Lead (Cita agendada).
+    *   🟠 **Naranja**: Reporte de Interacción (No interesado, buzón, etc).
+*   **Persistencia**: Gestiona clientes, leads e interacciones en archivos JSON locales (`src/data/`).
 
 ---
 
@@ -33,10 +37,11 @@ Este proyecto es un asistente de voz inteligente capaz de atender llamadas telef
 
 Antes de empezar, asegúrate de tener:
 
-*   **Node.js** (v18 o superior) instalado. [Descargar aquí](https://nodejs.org/)
-*   Una cuenta en **Twilio** con un número de teléfono. [Registrarse](https://www.twilio.com/)
-*   Una cuenta en **OpenAI** con acceso a la API (Key). [Obtener API Key](https://platform.openai.com/)
-*   **Ngrok** (para pruebas locales). [Descargar](https://ngrok.com/)
+*   **Node.js** (v18 o superior).
+*   Cuenta en **Twilio** (SID, Token y Número).
+*   Cuenta en **OpenAI** (API Key).
+*   Servidor SMTP (ej: Gmail App Password) para correos.
+*   **Ngrok** (para pruebas locales).
 
 ---
 
@@ -50,118 +55,95 @@ cd voice-bot
 ```
 
 ### 2. Instalar Dependencias
-Instala todas las librerías necesarias ejecutando:
+Instala todas las librerías necesarias (Node.js + Express):
 
 ```bash
 npm install
 ```
 
-¡Verás como se instalan `express`, `twilio`, `openai`, `ws` y otras herramientas mágicas! 🧙‍♂️
-
 ---
 
 ## ⚙️ Configuración de Twilio
 
-Para que Twilio sepa dónde enviar las llamadas, necesitamos configurar un Webhook.
+Para las llamadas entrantes (Inbound):
 
-1.  Ve a tu **Consola de Twilio** > **Phone Numbers** > **Manage** > **Active numbers**.
-2.  Haz clic en tu número de teléfono.
-3.  Baja hasta la sección **Voice & Fax**.
-4.  En **A CALL COMES IN**, selecciona **Webhook**.
-5.  Aquí pondrás tu URL pública (veremos como obtenerla con Ngrok en la sección "Ejecutar en Local").
-    *   La URL se verá algo así: `https://tu-url-ngrok.app/voice/inbound`
-    *   **IMPORTANTE**: Asegúrate de que sea `HTTP POST`.
-6.  ¡Guarda los cambios! 💾
+1.  Ve a tu **Consola de Twilio** > **Phone Numbers**.
+2.  En **A CALL COMES IN**, selecciona **Webhook**.
+3.  URL: `https://tu-url-publica.com/voice/inbound` (POST).
+
+Para las llamadas salientes (Outbound / Smart Drip):
+*   El sistema usa automáticamente `PUBLIC_URL` definido en el `.env`. Asegúrate de que esta URL sea accesible desde internet.
 
 ---
 
 ## 🔑 Variables de Entorno (.env)
 
-Crea un archivo llamado `.env` en la raíz del proyecto (`voice-bot/`). Puedes copiar este contenido y rellenar tus datos:
+Crea un archivo `.env` en `voice-bot/` (ver `.env.example`).
 
 ```ini
-# 🤖 Tu clave de OpenAI
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx
-
-# 🚪 Puerto del servidor (por defecto 3000)
+# Core
+OPENAI_API_KEY=sk-proj-...
 PORT=3000
+PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app  <-- CRUCIAL para Outbound
 
-# 📞 Credenciales de Twilio (Búscalas en tu consola de Twilio)
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Twilio
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
 TWILIO_PHONE_NUMBER=+1234567890
 
-# 🌐 Tu URL pública (Ngrok o Dominio real)
-# No olvides incluir 'https://' y sin barra al final
-PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+# Email (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tu-email@gmail.com
+SMTP_PASS=tu-app-password
+NOTIFICATION_EMAIL=destinatario@gmail.com
 ```
 
 ---
 
 ## 💻 Ejecutar en Local
 
-¡Hora de probarlo! Sigue estos pasos para ver la magia en tu computadora.
-
-### 1. Levantar el Túnel (Ngrok)
-En una terminal nueva, ejecuta:
-
+### 1. Levantar Ngrok
 ```bash
 ngrok http 3000
 ```
-Copiar la URL que dice `Forwarding` (ej: `https://a1b2-c3d4.ngrok-free.app`).
-
-👉 **Pega esta URL en tu archivo `.env` en `PUBLIC_URL`.**
-👉 **Pega esta URL + `/voice/inbound` en tu configuración de Twilio.**
+Copia la URL HTTPS y pégala en `PUBLIC_URL` dentro de `.env`.
 
 ### 2. Iniciar el Servidor
-En la terminal de tu proyecto, ejecuta:
-
 ```bash
 npm run dev
 ```
-Verás: `Server is running on port 3000` ✅
-
-### 3. ¡Llama a tu Bot! 📱
-Marca a tu número de Twilio. ¡Jules debería contestarte!
+Verás: `Server is running on port 3000`.
+El servicio "Smart Drip" iniciará automáticamente si `PUBLIC_URL` está configurado.
 
 ---
 
-## 🌐 Despliegue en Servidor (Ubuntu/VPS)
+## 🌐 Despliegue en Servidor
 
-¿Listo para ir a producción? 🌍
-
-1.  **Prepara el servidor**: Instala Node.js y Git en tu servidor Ubuntu.
-2.  **Sube el código**: Clona tu repo o sube los archivos.
-3.  **Instala dependencias**: `npm install`
-4.  **Configura el .env**: Crea el archivo `.env` con los datos reales.
-5.  **Usa PM2** (Gestor de procesos) para que no se apague nunca:
+1.  Configura el servidor (Ubuntu/VPS).
+2.  Configura las variables de entorno.
+3.  Usa PM2:
     ```bash
-    sudo npm install -g pm2
-    pm2 start src/server.js --name "voice-bot"
-    pm2 save
-    pm2 startup
+    pm2 start src/server.js --name "sarah-bot"
     ```
-6.  **SSL y Dominio** (Opcional pero recomendado): Usa Nginx y Certbot para tener HTTPS seguro.
 
 ---
 
 ## 📂 Estructura del Proyecto
 
-Para que no te pierdas, aquí está organizado todo:
-
 ```
 /voice-bot/
 ├── src/
-│   ├── config/          # ⚙️ Configuración y Prompts del sistema
-│   ├── controllers/     # 🎮 Controladores de llamadas y rutas
-│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Agenda, FAQ)
-│   ├── utils/           # 🛠️ Herramientas (Logger, Validador)
-│   └── server.js        # 🏁 Punto de entrada del servidor
-├── .env                 # 🔐 Tus secretos (¡No compartir!)
-├── package.json         # 📦 Lista de librerías
+│   ├── config/          # ⚙️ Prompts (Sarah) y Configuración
+│   ├── controllers/     # 🎮 Inbound/Outbound Logic
+│   ├── data/            # 🗄️ JSONs (clients, leads, interactions)
+│   ├── services/        # 🧠 OpenAI, Drip, Email Service
+│   ├── utils/           # 🛠️ Logger
+│   └── server.js        # 🏁 Entry Point
+├── .env                 # 🔐 Secretos
 └── README.md            # 📖 Este manual
 ```
 
 ---
 
-Hecho con ❤️ y código por **Jules**. ¡Disfruta tu nuevo asistente! 🎉
+Hecho con ❤️ y código por **Jules**. ¡A vender! 🚀
