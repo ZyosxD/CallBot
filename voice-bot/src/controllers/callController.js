@@ -2,62 +2,131 @@ import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
 import { config } from '../config/config.js';
+import { loadClients, callEnded } from '../services/dripService.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
 export const inboundCall = (req, res) => {
-  try {
-    logger.info('Incoming call received');
-    const response = new VoiceResponse();
-    const connect = response.connect();
-    const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
-    });
+    try {
+        logger.info('Incoming call received');
+        const response = new VoiceResponse();
+        const connect = response.connect();
+        const stream = connect.stream({
+            url: `wss://${req.headers.host}/voice/stream`,
+        });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+        stream.parameter({
+            name: 'context',
+            value: 'inbound'
+        });
 
-    res.type('text/xml');
-    res.send(response.toString());
-  } catch (error) {
-    logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
-  }
+        stream.parameter({
+            name: 'phone',
+            value: req.body.From || 'Unknown'
+        });
+
+        res.type('text/xml');
+        res.send(response.toString());
+    } catch (error) {
+        logger.error('Error handling inbound call:', error);
+        res.status(500).send('Internal Server Error');
+    }
+};
+
+export const outboundCallTwiml = (req, res) => {
+    try {
+        const { clientId } = req.query;
+        logger.info(`Generating TwiML for outbound call to client ${clientId}`);
+
+        const response = new VoiceResponse();
+        const connect = response.connect();
+        const stream = connect.stream({
+            url: `wss://${req.headers.host}/voice/stream`,
+        });
+
+        stream.parameter({
+            name: 'context',
+            value: 'outbound'
+        });
+
+        stream.parameter({
+            name: 'clientId',
+            value: clientId
+        });
+
+        res.type('text/xml');
+        res.send(response.toString());
+
+    } catch (error) {
+        logger.error('Error generating outbound TwiML:', error);
+        res.status(500).send('Internal Server Error');
+    }
+};
+
+export const callStatusCallback = (req, res) => {
+    const { CallSid, CallStatus } = req.body;
+    logger.info(`Call Status Update: ${CallSid} -> ${CallStatus}`);
+
+    if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(CallStatus)) {
+        callEnded(); // Release the drip lock
+    }
+
+    res.sendStatus(200);
 };
 
 export const handleWebSocket = (ws, req) => {
-  logger.info('New WebSocket connection');
+    logger.info('New WebSocket connection');
+    let callSid = 'unknown';
+    let openAIService = null;
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
-  let callSid = 'unknown';
+    ws.on('message', async (message) => {
+        try {
+            const data = JSON.parse(message);
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
-  openAIService.connect();
+            if (data.event === 'start') {
+                callSid = data.start.callSid;
+                const customParams = data.start.customParameters || {};
+                const context = customParams.context || 'inbound';
+                let clientData = {};
 
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
+                if (context === 'outbound' && customParams.clientId) {
+                    const clients = loadClients();
+                    const client = clients.find(c => c.id === customParams.clientId);
+                    if (client) {
+                        clientData = client;
+                    }
+                } else {
+                    // Inbound: try to infer from phone number
+                    clientData = {
+                        phone: customParams.phone || 'Unknown'
+                    };
+                }
 
-      if (data.event === 'start') {
-        callSid = data.start.callSid;
-        openAIService.callSid = callSid;
-        openAIService.handleTwilioMedia(data);
-      } else if (data.event === 'media') {
-        openAIService.handleTwilioMedia(data);
-      } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
-        ws.close();
-      }
-    } catch (error) {
-      logger.error('Error processing WebSocket message:', error);
-    }
-  });
+                logger.info(`Initializing OpenAI Service for ${context} call (SID: ${callSid})`);
+                openAIService = new OpenAIRealtimeService(ws, callSid, context, clientData);
+                await openAIService.connect();
+                openAIService.handleTwilioMedia(data);
 
-  ws.on('close', () => {
-    logger.info('WebSocket connection closed');
-    if (openAIService.openaiWs) {
-        openAIService.openaiWs.close();
-    }
-  });
+            } else if (data.event === 'media') {
+                if (openAIService) {
+                    openAIService.handleTwilioMedia(data);
+                }
+            } else if (data.event === 'stop') {
+                logger.info(`Stream stopped for call ${callSid}`);
+                if (openAIService && openAIService.openaiWs) {
+                    openAIService.openaiWs.close();
+                }
+                ws.close();
+            }
+        } catch (error) {
+            logger.error('Error processing WebSocket message:', error);
+        }
+    });
+
+    ws.on('close', () => {
+        logger.info('WebSocket connection closed');
+        if (openAIService && openAIService.openaiWs) {
+            openAIService.openaiWs.close();
+        }
+    });
 };
