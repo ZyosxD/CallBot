@@ -13,5 +13,19 @@ export const config = {
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY
+  },
+  email: {
+    service: process.env.EMAIL_SERVICE || 'gmail',
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+    from: process.env.EMAIL_FROM,
+    to: process.env.EMAIL_TO
+  },
+  drip: {
+    morningStart: { hour: 9, minute: 30 },
+    morningEnd: { hour: 11, minute: 30 },
+    afternoonStart: { hour: 14, minute: 30 },
+    afternoonEnd: { hour: 15, minute: 30 },
+    timezone: 'America/Denver' // Mountain Time
   }
 };
