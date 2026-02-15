@@ -2,20 +2,20 @@ import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
 import { config } from '../config/config.js';
+import { notifyCallEnded } from '../services/dripService.js';
+import { URL } from 'url';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
 export const inboundCall = (req, res) => {
   try {
-    logger.info('Incoming call received');
+    logger.info('Incoming INBOUND call received');
     const response = new VoiceResponse();
     const connect = response.connect();
+    // Pass context=inbound
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: \`wss://\${req.headers.host}/voice/stream?context=inbound\`,
     });
-
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
 
     res.type('text/xml');
     res.send(response.toString());
@@ -25,14 +25,50 @@ export const inboundCall = (req, res) => {
   }
 };
 
-export const handleWebSocket = (ws, req) => {
-  logger.info('New WebSocket connection');
+export const outboundTwiml = (req, res) => {
+  try {
+    const clientId = req.query.clientId;
+    logger.info(\`Generating TwiML for OUTBOUND call (Client ID: \${clientId})\`);
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
+    const response = new VoiceResponse();
+    const connect = response.connect();
+    // Pass context=outbound and clientId
+    const stream = connect.stream({
+      url: \`wss://\${req.headers.host}/voice/stream?context=outbound&clientId=\${clientId}\`,
+    });
+
+    res.type('text/xml');
+    res.send(response.toString());
+  } catch (error) {
+    logger.error('Error handling outbound TwiML:', error);
+    res.status(500).send('Internal Server Error');
+  }
+};
+
+export const callStatus = (req, res) => {
+  const callStatus = req.body.CallStatus;
+  const callSid = req.body.CallSid;
+
+  logger.info(\`Call Status Update: \${callSid} is \${callStatus}\`);
+
+  if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(callStatus)) {
+    notifyCallEnded();
+  }
+
+  res.sendStatus(200);
+};
+
+export const handleWebSocket = (ws, req) => {
+  // Parse query params from req.url
+  const url = new URL(req.url, \`http://\${req.headers.host}\`);
+  const context = url.searchParams.get('context') || 'inbound';
+  const clientId = url.searchParams.get('clientId');
+
+  logger.info(\`New WebSocket connection. Context: \${context}, ClientID: \${clientId}\`);
+
   let callSid = 'unknown';
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
+  const openAIService = new OpenAIRealtimeService(ws, callSid, context, clientId);
   openAIService.connect();
 
   ws.on('message', (message) => {
@@ -59,5 +95,7 @@ export const handleWebSocket = (ws, req) => {
     if (openAIService.openaiWs) {
         openAIService.openaiWs.close();
     }
+    // Also ensure concurrency lock is released if socket closes unexpectedly
+    // But notifyCallEnded is better handled by status callback
   });
 };
