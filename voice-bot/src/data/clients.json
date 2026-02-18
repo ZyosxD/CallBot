@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "name": "John Doe",
+    "company": "Tech Solutions Inc.",
+    "phone": "+15551234567",
+    "status": "PENDING"
+  },
+  {
+    "id": 2,
+    "name": "Jane Smith",
+    "company": "Creative Agency",
+    "phone": "+15559876543",
+    "status": "PENDING"
+  }
+]
