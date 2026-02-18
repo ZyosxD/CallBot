@@ -1,11 +1,10 @@
 import express from 'express';
-import { inboundCall } from './callController.js';
-import { validateTwilioRequest } from '../utils/twilioValidator.js';
+import { inboundCall, outboundTwiML, statusCallback } from './callController.js';
 
 const router = express.Router();
 
-// POST /voice/inbound
-// Validates Twilio signature and returns TwiML to connect to WebSocket
-router.post('/inbound', validateTwilioRequest, inboundCall);
+router.post('/inbound', inboundCall);
+router.post('/outbound-twiml', outboundTwiML);
+router.post('/status-callback', statusCallback);
 
 export default router;
