@@ -1,47 +1,109 @@
-import dayjs from 'dayjs';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
+import { sendSuccessEmail, sendReportEmail } from './emailService.js';
+import { withLock } from '../utils/fileLock.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_DIR = path.join(__dirname, '../data');
+const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
+const INTERACTIONS_FILE = path.join(DATA_DIR, 'interactions.json');
 
-export const createAppointment = async (data) => {
+export const scheduleAppointment = async (data) => {
   try {
-    const { name, date, time } = data;
+    const { name, company, phone, datetime, notes } = data;
 
-    // Basic validation
-    if (!name || !date || !time) {
+    if (!name || !company || !phone || !datetime) {
       throw new Error('Missing required appointment details');
     }
 
-    // Mock saving appointment
-    const appointment = {
+    const lead = {
       id: Date.now(),
       name,
-      date,
-      time,
-      status: 'confirmed'
+      company,
+      phone,
+      datetime,
+      notes: notes || '',
+      createdAt: new Date().toISOString()
     };
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    // Append to leads.json with lock
+    await withLock(LEADS_FILE, async () => {
+      const leadsData = await fs.readFile(LEADS_FILE, 'utf-8').catch(() => '[]');
+      const leads = JSON.parse(leadsData);
+      leads.push(lead);
+      await fs.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2));
+    });
+
+    logger.info(`Lead scheduled: ${name} from ${company}`);
+
+    // Send email
+    await sendSuccessEmail({
+        name,
+        company,
+        phone,
+        datetime,
+        notes,
+        callerId: data.callerId // Passed from controller/service
+    });
 
     return {
       success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
+      message: `Appointment scheduled for ${name} at ${datetime}.`,
+      lead
     };
 
   } catch (error) {
-    logger.error('Error creating appointment:', error);
+    logger.error('Error scheduling appointment:', error);
     return {
       success: false,
-      message: 'Failed to create appointment.'
+      message: 'Failed to schedule appointment.'
     };
   }
 };
 
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
+export const reportInteraction = async (data) => {
+  try {
+    const { outcome, notes, callerId } = data;
+
+    const interaction = {
+      id: Date.now(),
+      outcome,
+      notes: notes || '',
+      callerId,
+      createdAt: new Date().toISOString()
+    };
+
+    // Append to interactions.json with lock
+    await withLock(INTERACTIONS_FILE, async () => {
+      const interactionsData = await fs.readFile(INTERACTIONS_FILE, 'utf-8').catch(() => '[]');
+      const interactions = JSON.parse(interactionsData);
+      interactions.push(interaction);
+      await fs.writeFile(INTERACTIONS_FILE, JSON.stringify(interactions, null, 2));
+    });
+
+    logger.info(`Interaction reported: ${outcome} for ${callerId}`);
+
+    // Send email
+    await sendReportEmail({
+        outcome,
+        notes,
+        callerId,
+        phone: callerId
+    });
+
+    return {
+      success: true,
+      message: `Interaction reported: ${outcome}.`
+    };
+
+  } catch (error) {
+    logger.error('Error reporting interaction:', error);
+    return {
+      success: false,
+      message: 'Failed to report interaction.'
+    };
+  }
 };
