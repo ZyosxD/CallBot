@@ -1,47 +1,44 @@
-import dayjs from 'dayjs';
+import { appendJson } from '../utils/fileLock.js';
+import { sendLeadEmail, sendReportEmail } from './emailService.js';
 import logger from '../utils/logger.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
-
-export const createAppointment = async (data) => {
+export const scheduleAppointment = async (data, callSid, callerId) => {
   try {
-    const { name, date, time } = data;
-
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
-    }
-
-    // Mock saving appointment
-    const appointment = {
+    const lead = {
       id: Date.now(),
-      name,
-      date,
-      time,
-      status: 'confirmed'
+      callSid,
+      ...data,
+      timestamp: new Date().toISOString()
     };
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    await appendJson('leads.json', lead);
+    await sendLeadEmail(lead, callerId);
 
-    return {
-      success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
-    };
-
+    logger.info(`Appointment scheduled for ${data.companyName}`);
+    return { success: true, message: "Appointment scheduled successfully." };
   } catch (error) {
-    logger.error('Error creating appointment:', error);
-    return {
-      success: false,
-      message: 'Failed to create appointment.'
-    };
+    logger.error('Error scheduling appointment:', error);
+    return { success: false, message: "Failed to schedule appointment." };
   }
 };
 
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
+export const reportInteraction = async (data, callSid, callerId) => {
+  try {
+    const interaction = {
+      id: Date.now(),
+      callSid,
+      callerId,
+      ...data,
+      timestamp: new Date().toISOString()
+    };
+
+    await appendJson('interactions.json', interaction);
+    await sendReportEmail(interaction, callerId);
+
+    logger.info(`Interaction reported: ${data.status}`);
+    return { success: true, message: "Interaction reported successfully." };
+  } catch (error) {
+    logger.error('Error reporting interaction:', error);
+    return { success: false, message: "Failed to report interaction." };
+  }
 };
