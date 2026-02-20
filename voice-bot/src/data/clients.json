@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "phone": "+18015550100",
+    "status": "PENDING",
+    "notes": "Office Manager"
+  },
+  {
+    "id": 2,
+    "name": "Wayne Enterprises",
+    "phone": "+18015550101",
+    "status": "PENDING",
+    "notes": "IT Director"
+  },
+  {
+    "id": 3,
+    "name": "Stark Industries",
+    "phone": "+18015550102",
+    "status": "CALLED",
+    "notes": "Already contacted"
+  }
+]
