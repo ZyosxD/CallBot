@@ -1,0 +1,4 @@
+[
+  { "id": 1, "name": "John Doe", "phone": "+1234567890", "status": "PENDING", "notes": "Dental clinic owner" },
+  { "id": 2, "name": "Jane Smith", "phone": "+1987654321", "status": "PENDING", "notes": "Law firm office manager" }
+]

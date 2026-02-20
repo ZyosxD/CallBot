@@ -1,47 +1,67 @@
-import dayjs from 'dayjs';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
+import { sendReport } from './emailService.js';
+import { withLock } from '../utils/fileLock.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-export const createAppointment = async (data) => {
+const LEADS_FILE = path.join(__dirname, '../data/leads.json');
+const INTERACTIONS_FILE = path.join(__dirname, '../data/interactions.json');
+
+export const scheduleAppointment = async (data, callerId) => {
   try {
-    const { name, date, time } = data;
+    logger.info(`Scheduling appointment for ${data.name}`);
 
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
-    }
-
-    // Mock saving appointment
     const appointment = {
       id: Date.now(),
-      name,
-      date,
-      time,
-      status: 'confirmed'
+      ...data,
+      timestamp: new Date().toISOString()
     };
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    await withLock(LEADS_FILE, async () => {
+      const fileContent = await fs.readFile(LEADS_FILE, 'utf-8');
+      const leads = JSON.parse(fileContent);
+      leads.push(appointment);
+      await fs.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2));
+    });
 
-    return {
-      success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
-    };
+    // Send email
+    await sendReport('success', appointment, callerId, data.phone);
 
+    return { success: true, message: "Appointment scheduled successfully." };
   } catch (error) {
-    logger.error('Error creating appointment:', error);
-    return {
-      success: false,
-      message: 'Failed to create appointment.'
-    };
+    logger.error('Error scheduling appointment:', error);
+    return { success: false, message: "Failed to schedule appointment." };
   }
 };
 
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
+export const reportInteraction = async (data, callerId) => {
+  try {
+    logger.info(`Reporting interaction: ${data.outcome}`);
+
+    const interaction = {
+      id: Date.now(),
+      ...data,
+      callerId,
+      timestamp: new Date().toISOString()
+    };
+
+    await withLock(INTERACTIONS_FILE, async () => {
+        const fileContent = await fs.readFile(INTERACTIONS_FILE, 'utf-8');
+        const interactions = JSON.parse(fileContent);
+        interactions.push(interaction);
+        await fs.writeFile(INTERACTIONS_FILE, JSON.stringify(interactions, null, 2));
+    });
+
+    // Send email
+    await sendReport('report', interaction, callerId, null);
+
+    return { success: true, message: "Interaction reported." };
+  } catch (error) {
+    logger.error('Error reporting interaction:', error);
+    return { success: false, message: "Failed to report interaction." };
+  }
 };
