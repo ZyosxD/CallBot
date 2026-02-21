@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "phone": "+18015550100",
+    "status": "PENDING",
+    "notes": "Tech company in SLC"
+  },
+  {
+    "id": 2,
+    "name": "Dentist Office",
+    "phone": "+18015550101",
+    "status": "PENDING",
+    "notes": "Small business"
+  }
+]
