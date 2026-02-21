@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "name": "Tech Corp",
+    "phone": "+18015551234",
+    "status": "PENDING",
+    "notes": "Software company in Salt Lake City"
+  },
+  {
+    "id": 2,
+    "name": "Design Studio",
+    "phone": "+18015555678",
+    "status": "PENDING",
+    "notes": "Graphic design firm"
+  }
+]
