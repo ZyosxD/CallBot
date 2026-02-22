@@ -1,11 +1,16 @@
 import WebSocket from 'ws';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from '../config/config.js';
 import { prompts } from '../config/prompts.js';
 import logger, { logConversation } from '../utils/logger.js';
-import { createAppointment, checkAvailability } from './appointmentService.js';
-import { getFAQAnswer } from './faqService.js';
-import { transferToHuman } from './transferService.js';
-import twilio from 'twilio';
+import { sendReport } from './emailService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const LEADS_FILE = path.join(__dirname, '../data/leads.json');
+const INTERACTIONS_FILE = path.join(__dirname, '../data/interactions.json');
 
 export class OpenAIRealtimeService {
   constructor(ws, callSid) {
@@ -13,6 +18,7 @@ export class OpenAIRealtimeService {
     this.callSid = callSid;
     this.openaiWs = null;
     this.streamSid = null;
+    this.context = {};
   }
 
   async connect() {
@@ -47,63 +53,63 @@ export class OpenAIRealtimeService {
   }
 
   sendSessionUpdate() {
+    // Determine instruction based on context (default to outbound/cold caller if not specified)
+    // If context.mode is 'inbound', use inbound prompt.
+    // Drip service sets 'clientId', so we can assume outbound if present.
+    let instruction = prompts.outbound;
+    if (this.context.mode === 'inbound') {
+        instruction = prompts.inbound;
+    }
+
     const sessionUpdate = {
       type: 'session.update',
       session: {
-        turn_detection: { type: 'server_vad' },
+        turn_detection: { type: 'server_vad', silence_duration_ms: 1500 },
         input_audio_format: 'g711_ulaw',
         output_audio_format: 'g711_ulaw',
-        voice: 'alloy',
-        instructions: prompts.systemInstruction,
+        voice: 'coral',
+        instructions: instruction,
         modalities: ["text", "audio"],
         temperature: 0.8,
         tools: [
           {
             type: "function",
-            name: "check_availability",
-            description: "Check availability for an appointment",
+            name: "schedule_appointment",
+            description: "Schedule a technical assessment when the user says YES and provides all details.",
             parameters: {
               type: "object",
               properties: {
-                date: { type: "string", description: "YYYY-MM-DD" },
-                time: { type: "string", description: "HH:mm" }
+                name: { type: "string", description: "Name of the contact person" },
+                companyName: { type: "string", description: "Name of the company" },
+                confirmedPhone: { type: "string", description: "The verified best callback number" },
+                time: { type: "string", description: "The agreed time for the assessment" },
+                notes: { type: "string", description: "Any additional notes" }
               },
-              required: ["date", "time"]
+              required: ["name", "companyName", "confirmedPhone", "time"]
             }
           },
           {
             type: "function",
-            name: "create_appointment",
-            description: "Create a new appointment",
+            name: "report_interaction",
+            description: "Report the outcome when the user is not interested, asks to call later, or voicemail.",
             parameters: {
               type: "object",
               properties: {
-                name: { type: "string", description: "Patient name" },
-                date: { type: "string", description: "YYYY-MM-DD" },
-                time: { type: "string", description: "HH:mm" }
+                result: { type: "string", enum: ["NOT_INTERESTED", "CALL_LATER", "VOICEMAIL", "OTHER"], description: "The outcome of the call" },
+                details: { type: "string", description: "Summary of what happened" }
               },
-              required: ["name", "date", "time"]
+              required: ["result"]
             }
           },
           {
             type: "function",
-            name: "get_faq_answer",
-            description: "Get answer for frequently asked questions",
+            name: "end_call",
+            description: "End the call politely.",
             parameters: {
               type: "object",
               properties: {
-                query: { type: "string", description: "User question" }
-              },
-              required: ["query"]
-            }
-          },
-          {
-            type: "function",
-            name: "transfer_call",
-            description: "Transfer the call to a human agent",
-            parameters: {
-              type: "object",
-              properties: {},
+                reason: { type: "string", description: "Reason for ending the call" }
+              }
             }
           }
         ],
@@ -148,21 +154,15 @@ export class OpenAIRealtimeService {
     const callId = event.call_id;
 
     logger.info(`Function call detected: ${name} with args: ${args}`);
-    let result = null;
+    let result = { status: 'success' };
 
     try {
-      if (name === 'check_availability') {
-        const available = await checkAvailability(parsedArgs.date, parsedArgs.time);
-        result = { available };
-      } else if (name === 'create_appointment') {
-        result = await createAppointment(parsedArgs);
-      } else if (name === 'get_faq_answer') {
-        const answer = getFAQAnswer(parsedArgs.query);
-        result = { answer: answer || "I don't have information about that." };
-      } else if (name === 'transfer_call') {
-        // Handle transfer
-        await this.handleTransfer();
-        result = { status: 'transferring' };
+      if (name === 'schedule_appointment') {
+        await this.handleScheduleAppointment(parsedArgs);
+      } else if (name === 'report_interaction') {
+        await this.handleReportInteraction(parsedArgs);
+      } else if (name === 'end_call') {
+        await this.handleEndCall(parsedArgs);
       }
 
       // Send result back to OpenAI
@@ -176,38 +176,69 @@ export class OpenAIRealtimeService {
       };
       this.sendToOpenAI(functionOutput);
 
-      // Trigger a response generation
-      this.sendToOpenAI({ type: 'response.create' });
+      // Trigger a response generation if not ending call
+      if (name !== 'end_call') {
+          this.sendToOpenAI({ type: 'response.create' });
+      }
 
     } catch (error) {
       logger.error(`Error executing function ${name}:`, error);
-      // Optionally send error back
     }
   }
 
-  async handleTransfer() {
+  async appendToFile(filePath, data) {
     try {
-        logger.info(`Initiating transfer for call ${this.callSid}`);
-        // Get TwiML for transfer
-        const twiml = transferToHuman(this.callSid);
+      let content = [];
+      try {
+        const fileData = await fs.readFile(filePath, 'utf-8');
+        content = JSON.parse(fileData);
+      } catch (e) {
+        // File might be empty or not exist
+      }
+      content.push(data);
+      await fs.writeFile(filePath, JSON.stringify(content, null, 2));
+    } catch (error) {
+      logger.error(`Error writing to file ${filePath}:`, error);
+    }
+  }
 
-        // Update the call using Twilio REST API
-        const client = twilio(config.twilio.accountSid, config.twilio.authToken);
-        await client.calls(this.callSid).update({
-            twiml: twiml
-        });
+  async handleScheduleAppointment(args) {
+    const record = {
+      ...args,
+      callSid: this.callSid,
+      timestamp: new Date().toISOString(),
+      callerId: this.context.callerId || 'Unknown'
+    };
+    await this.appendToFile(LEADS_FILE, record);
+    await sendReport('SUCCESS', record);
+  }
 
-        // Close websocket as the call is being transferred
+  async handleReportInteraction(args) {
+    const record = {
+      ...args,
+      callSid: this.callSid,
+      timestamp: new Date().toISOString(),
+      callerId: this.context.callerId || 'Unknown'
+    };
+    await this.appendToFile(INTERACTIONS_FILE, record);
+    await sendReport('REPORT', record);
+  }
+
+  async handleEndCall(args) {
+    logger.info(`Ending call: ${args.reason}`);
+    // Say goodbye (OpenAI might have already generated audio for the farewell before calling this tool,
+    // or we might want to let it generate a response after this tool output).
+    // The spec says: "Retardo de 10 segundos before closing socket".
+
+    // We initiate the delay.
+    setTimeout(() => {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.close();
         }
         if (this.openaiWs && this.openaiWs.readyState === WebSocket.OPEN) {
             this.openaiWs.close();
         }
-
-    } catch (error) {
-        logger.error('Error handling transfer:', error);
-    }
+    }, 10000);
   }
 
   sendAudioToTwilio(audioPayload) {
@@ -232,7 +263,20 @@ export class OpenAIRealtimeService {
   handleTwilioMedia(data) {
     if (data.event === 'start') {
       this.streamSid = data.start.streamSid;
-      logger.info(`Stream started: ${this.streamSid}`);
+      this.context = data.start.customParameters || {};
+      logger.info(`Stream started: ${this.streamSid} with context: ${JSON.stringify(this.context)}`);
+
+      // If we need to re-send session update because we now know the context (inbound/outbound), we could do it here.
+      // But sendSessionUpdate was called on 'open' of OpenAI socket.
+      // Usually Twilio 'start' comes very quickly.
+      // If OpenAI is already connected, we might want to update instructions if they differ.
+      // For now, let's assume session update is robust enough or we send it again.
+      // Actually, it's better to send session update AFTER we have context if possible,
+      // but OpenAI connection might take time.
+      // A simple fix: Call sendSessionUpdate again here if context dictates a different prompt.
+
+      this.sendSessionUpdate();
+
     } else if (data.event === 'media') {
         const audioAppend = {
             type: 'input_audio_buffer.append',
