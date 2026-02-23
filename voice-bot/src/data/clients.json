@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "phone": "+18015550100",
+    "status": "PENDING",
+    "notes": "Target for IT services"
+  },
+  {
+    "id": 2,
+    "name": "Beta Industries",
+    "phone": "+18015550101",
+    "status": "PENDING",
+    "notes": "Interested in VoIP"
+  },
+  {
+    "id": 3,
+    "name": "Gamma LLC",
+    "phone": "+18015550102",
+    "status": "CALLED",
+    "notes": "Called yesterday"
+  }
+]

@@ -4,7 +4,18 @@ import { WebSocketServer } from 'ws';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
+import { startDrip } from './services/dripService.js';
 import logger from './utils/logger.js';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+if (!config.server.publicUrl) {
+    logger.warn('WARNING: PUBLIC_URL is not set. Drip Service will not start.');
+}
 
 const app = express();
 const server = createServer(app);
@@ -32,4 +43,8 @@ app.use((err, req, res, next) => {
 const PORT = config.server.port;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
+
+  if (config.server.publicUrl) {
+      startDrip();
+  }
 });
