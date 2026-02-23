@@ -10,12 +10,22 @@ export const inboundCall = (req, res) => {
     logger.info('Incoming call received');
     const response = new VoiceResponse();
     const connect = response.connect();
+
+    const host = config.server.publicUrl ? config.server.publicUrl.replace('https://', '').replace('http://', '') : req.headers.host;
+
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    stream.parameter({
+        name: 'callerId',
+        value: req.body.From
+    });
+
+    stream.parameter({
+        name: 'mode',
+        value: 'inbound'
+    });
 
     res.type('text/xml');
     res.send(response.toString());
@@ -28,8 +38,6 @@ export const inboundCall = (req, res) => {
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
 
   const openAIService = new OpenAIRealtimeService(ws, callSid);
@@ -46,8 +54,10 @@ export const handleWebSocket = (ws, req) => {
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
-        ws.close();
+        logger.info(`Stream stopped for call ${callSid}`);
+        if (openAIService.openaiWs) {
+            openAIService.openaiWs.close();
+        }
       }
     } catch (error) {
       logger.error('Error processing WebSocket message:', error);
