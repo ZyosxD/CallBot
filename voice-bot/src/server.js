@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
+import { startDrip } from './services/dripService.js';
 import logger from './utils/logger.js';
 
 const app = express();
@@ -32,4 +33,11 @@ app.use((err, req, res, next) => {
 const PORT = config.server.port;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
+
+  // Start the drip service if public URL is configured
+  if (config.server.publicUrl) {
+    startDrip();
+  } else {
+    logger.warn('Public URL not set. Drip service not started.');
+  }
 });
