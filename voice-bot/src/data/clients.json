@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "name": "Test Company",
+    "phone": "+15551234567",
+    "status": "PENDING",
+    "notes": "Test client"
+  }
+]

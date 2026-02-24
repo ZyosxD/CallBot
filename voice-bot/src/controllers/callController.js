@@ -1,7 +1,7 @@
 import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
+import { handleCallEnded as dripHandleCallEnded } from '../services/dripService.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -11,11 +11,14 @@ export const inboundCall = (req, res) => {
     const response = new VoiceResponse();
     const connect = response.connect();
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    // For inbound, we can pass the caller ID as parameter too
+    stream.parameter({
+        name: 'callerId',
+        value: req.body.From
+    });
 
     res.type('text/xml');
     res.send(response.toString());
@@ -28,8 +31,6 @@ export const inboundCall = (req, res) => {
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
 
   const openAIService = new OpenAIRealtimeService(ws, callSid);
@@ -46,7 +47,7 @@ export const handleWebSocket = (ws, req) => {
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
@@ -60,4 +61,17 @@ export const handleWebSocket = (ws, req) => {
         openAIService.openaiWs.close();
     }
   });
+};
+
+export const handleStatusCallback = (req, res) => {
+  const callSid = req.body.CallSid;
+  const callStatus = req.body.CallStatus;
+
+  logger.info(`Call ${callSid} status update: ${callStatus}`);
+
+  if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(callStatus)) {
+    dripHandleCallEnded();
+  }
+
+  res.sendStatus(200);
 };
