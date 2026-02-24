@@ -2,6 +2,7 @@ import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
 import { config } from '../config/config.js';
+import { callEnded as dripCallEnded } from '../services/dripService.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -10,12 +11,19 @@ export const inboundCall = (req, res) => {
     logger.info('Incoming call received');
     const response = new VoiceResponse();
     const connect = response.connect();
+
+    // Prepare WebSocket URL
+    let publicUrl = config.server.publicUrl || req.headers.host;
+    publicUrl = publicUrl.replace(/^https?:\/\//, ''); // Strip protocol
+    const wsUrl = `wss://${publicUrl}/voice/stream`;
+
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: wsUrl,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    // Pass parameters
+    stream.parameter({ name: 'mode', value: 'inbound' });
+    stream.parameter({ name: 'callerId', value: req.body.From || 'unknown' });
 
     res.type('text/xml');
     res.send(response.toString());
@@ -25,11 +33,21 @@ export const inboundCall = (req, res) => {
   }
 };
 
+export const callStatusUpdate = (req, res) => {
+    const callStatus = req.body.CallStatus;
+    const callSid = req.body.CallSid;
+    logger.info(`Call Status Update: ${callSid} -> ${callStatus}`);
+
+    if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(callStatus)) {
+        dripCallEnded();
+    }
+
+    res.sendStatus(200);
+};
+
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
 
   const openAIService = new OpenAIRealtimeService(ws, callSid);
@@ -46,7 +64,7 @@ export const handleWebSocket = (ws, req) => {
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {

@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "name": "John Doe",
+    "phone": "+18015550100",
+    "status": "PENDING",
+    "notes": "Tech company owner"
+  },
+  {
+    "id": 2,
+    "name": "Jane Smith",
+    "phone": "+18015550101",
+    "status": "PENDING",
+    "notes": "Law firm manager"
+  },
+  {
+    "id": 3,
+    "name": "Bob Johnson",
+    "phone": "+18015550102",
+    "status": "PENDING",
+    "notes": "Medical clinic"
+  }
+]
