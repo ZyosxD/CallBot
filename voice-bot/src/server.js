@@ -5,6 +5,7 @@ import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { startDrip, stopDrip } from './services/dripService.js';
 
 const app = express();
 const server = createServer(app);
@@ -32,4 +33,22 @@ app.use((err, req, res, next) => {
 const PORT = config.server.port;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
+
+  // Public URL Check
+  if (!config.server.publicUrl) {
+      logger.warn('WARNING: PUBLIC_URL environment variable is not set. Drip service will not work correctly.');
+  } else {
+      // Start Drip Service
+      startDrip();
+  }
+});
+
+// Graceful Shutdown
+process.on('SIGTERM', () => {
+    logger.info('SIGTERM received. Stopping services...');
+    stopDrip();
+    server.close(() => {
+        logger.info('Server closed.');
+        process.exit(0);
+    });
 });
