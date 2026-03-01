@@ -1,8 +1,8 @@
 import winston from 'winston';
 import path from 'path';
 
-const logFormat = winston.format.printf(({ level, message, timestamp }) => {
-  return \`\${timestamp} [\${level.toUpperCase()}]: \${message}\`;
+const logFormat = winston.format.printf((info) => {
+  return `${info.timestamp} [${info.level.toUpperCase()}]: ${info.message}`;
 });
 
 const logger = winston.createLogger({
@@ -19,7 +19,7 @@ const logger = winston.createLogger({
 });
 
 export const logConversation = (conversationId, role, content) => {
-  logger.info(\`Conversation [\${conversationId}] \${role}: \${content}\`);
+  logger.info(`Conversation [${conversationId}] ${role}: ${content}`);
 };
 
 export default logger;
