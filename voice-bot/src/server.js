@@ -1,10 +1,17 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
+import { startDripService } from './services/dripService.js';
 import logger from './utils/logger.js';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const app = express();
 const server = createServer(app);
@@ -32,4 +39,10 @@ app.use((err, req, res, next) => {
 const PORT = config.server.port;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
+
+  if (config.server.publicUrl) {
+    startDripService();
+  } else {
+    logger.warn('PUBLIC_URL is missing. Outbound drip service will not start.');
+  }
 });
