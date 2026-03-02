@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "name": "ACME Corp",
+    "phone": "+1234567890",
+    "status": "PENDING",
+    "notes": "Testing the outbound Smart Drip"
+  }
+]

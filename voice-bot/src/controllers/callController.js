@@ -11,17 +11,38 @@ export const inboundCall = (req, res) => {
     const response = new VoiceResponse();
     const connect = response.connect();
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    // Pass custom parameters
+    stream.parameter({ name: 'mode', value: 'SARAH_INBOUND' });
+    stream.parameter({ name: 'callerId', value: req.body.From || 'unknown' });
 
     res.type('text/xml');
     res.send(response.toString());
   } catch (error) {
     logger.error('Error handling inbound call:', error);
     res.status(500).send('Internal Server Error');
+  }
+};
+
+export const handleStatusCallback = (req, res) => {
+  try {
+    const callStatus = req.body.CallStatus;
+    const callSid = req.body.CallSid;
+
+    logger.info(`Call ${callSid} status updated to: ${callStatus}`);
+
+    if (callStatus === 'completed' || callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer' || callStatus === 'canceled') {
+        import('../services/dripService.js').then(({ onCallEnded }) => {
+            onCallEnded();
+        });
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    logger.error('Error handling status callback:', error);
+    res.sendStatus(500);
   }
 };
 
@@ -46,7 +67,7 @@ export const handleWebSocket = (ws, req) => {
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
