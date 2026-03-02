@@ -1,10 +1,18 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
+import { startDrip } from './services/dripService.js';
 import logger from './utils/logger.js';
+
+// Setup dayjs
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const app = express();
 const server = createServer(app);
@@ -27,6 +35,14 @@ app.use((err, req, res, next) => {
   logger.error(err.stack);
   res.status(500).send('Something broke!');
 });
+
+// Startup checks
+if (!config.server.publicUrl) {
+  logger.warn('WARNING: config.server.publicUrl is not set. Drip Service will not start.');
+} else {
+  // Start the Smart Drip Service
+  startDrip();
+}
 
 // Start server
 const PORT = config.server.port;
