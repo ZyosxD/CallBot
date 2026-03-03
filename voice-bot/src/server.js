@@ -5,6 +5,13 @@ import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { startDrip } from './services/dripService.js';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const app = express();
 const server = createServer(app);
@@ -32,4 +39,11 @@ app.use((err, req, res, next) => {
 const PORT = config.server.port;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
+
+  if (!config.server.publicUrl) {
+    logger.warn('config.server.publicUrl is not set. Drip Service will NOT start.');
+  } else {
+    logger.info('publicUrl is configured. Initializing Drip Service...');
+    startDrip();
+  }
 });
