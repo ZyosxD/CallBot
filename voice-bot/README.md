@@ -1,7 +1,7 @@
-# 🤖 Voice Bot con OpenAI Realtime & Twilio 📞
+# 🤖 1WIRE AI COLD CALLER (SARAH) 📞
 
 ¡Bienvenido a tu **Voice Bot** de última generación! 🚀
-Este proyecto es un asistente de voz inteligente capaz de atender llamadas telefónicas en tiempo real, hablar en inglés y español, agendar citas y responder preguntas frecuentes. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
+Este proyecto es un asistente de voz inteligente capaz de atender y realizar llamadas telefónicas en tiempo real, hablar en inglés y español, agendar Evaluaciones Técnicas y responder preguntas frecuentes. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
 
 ---
 
@@ -20,12 +20,13 @@ Este proyecto es un asistente de voz inteligente capaz de atender llamadas telef
 
 ## 🌟 Características
 
-*   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI.
+*   **Identidad y Personalidad**: "Sarah" (1Wire Assistant).
+*   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI (Voz "Coral").
 *   **Bilingüe**: Detecta y habla Español 🇪🇸 e Inglés 🇺🇸 automáticamente.
-*   **Inteligente**: Responde preguntas frecuentes (FAQs) 🧠.
-*   **Agenda Citas**: Gestiona reservas de horas y fechas 📅.
-*   **Transferencias**: Pasa la llamada a un humano si es necesario 👤.
-*   **Logs**: Guarda registro de todo lo que sucede 📝.
+*   **Estrategia "Smart Drip"**: Llama automáticamente a clientes en horarios específicos.
+*   **Agenda Citas**: Gestiona reservas de "Evaluaciones Técnicas" (La Trifecta).
+*   **Sistema de Reportes**: Envía correos con detalles de las interacciones.
+*   **Infraestructura V8**: Optimizada para servidores con baja RAM (Swap de 1GB).
 
 ---
 
@@ -94,6 +95,13 @@ TWILIO_PHONE_NUMBER=+1234567890
 # 🌐 Tu URL pública (Ngrok o Dominio real)
 # No olvides incluir 'https://' y sin barra al final
 PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+
+# 📧 Configuración de Email para reportes
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tu_correo@gmail.com
+SMTP_PASS=tu_contraseña_de_aplicación
+NOTIFICATION_EMAIL=correo_destino@ejemplo.com
 ```
 
 ---
@@ -122,7 +130,7 @@ npm run dev
 Verás: `Server is running on port 3000` ✅
 
 ### 3. ¡Llama a tu Bot! 📱
-Marca a tu número de Twilio. ¡Jules debería contestarte!
+Marca a tu número de Twilio. ¡Sarah debería contestarte!
 
 ---
 
@@ -130,7 +138,7 @@ Marca a tu número de Twilio. ¡Jules debería contestarte!
 
 ¿Listo para ir a producción? 🌍
 
-1.  **Prepara el servidor**: Instala Node.js y Git en tu servidor Ubuntu.
+1.  **Prepara el servidor**: Instala Node.js y Git en tu servidor Ubuntu. Asegúrate de tener **1GB Swap Memory** activo.
 2.  **Sube el código**: Clona tu repo o sube los archivos.
 3.  **Instala dependencias**: `npm install`
 4.  **Configura el .env**: Crea el archivo `.env` con los datos reales.
@@ -152,16 +160,13 @@ Para que no te pierdas, aquí está organizado todo:
 ```
 /voice-bot/
 ├── src/
-│   ├── config/          # ⚙️ Configuración y Prompts del sistema
+│   ├── config/          # ⚙️ Configuración y Prompts (SARAH)
 │   ├── controllers/     # 🎮 Controladores de llamadas y rutas
-│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Agenda, FAQ)
+│   ├── data/            # 💾 Bases de datos JSON locales
+│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Drip, Email)
 │   ├── utils/           # 🛠️ Herramientas (Logger, Validador)
 │   └── server.js        # 🏁 Punto de entrada del servidor
 ├── .env                 # 🔐 Tus secretos (¡No compartir!)
 ├── package.json         # 📦 Lista de librerías
 └── README.md            # 📖 Este manual
 ```
-
----
-
-Hecho con ❤️ y código por **Jules**. ¡Disfruta tu nuevo asistente! 🎉
