@@ -28,8 +28,16 @@ app.use((err, req, res, next) => {
   res.status(500).send('Something broke!');
 });
 
+import { startDrip } from './services/dripService.js';
+
 // Start server
 const PORT = config.server.port;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
+
+  if (!config.server.publicUrl) {
+    logger.warn('PUBLIC_URL is not set. Drip service will not start.');
+  } else {
+    startDrip();
+  }
 });
