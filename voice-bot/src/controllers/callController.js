@@ -11,11 +11,20 @@ export const inboundCall = (req, res) => {
     const response = new VoiceResponse();
     const connect = response.connect();
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    const callerId = req.body.From || 'unknown';
+
+    stream.parameter({
+      name: 'callerId',
+      value: callerId
+    });
+
+    stream.parameter({
+      name: 'mode',
+      value: 'inbound'
+    });
 
     res.type('text/xml');
     res.send(response.toString());
@@ -28,12 +37,11 @@ export const inboundCall = (req, res) => {
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
+  let callerId = 'unknown';
+  let mode = 'inbound';
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
-  openAIService.connect();
+  let openAIService = null;
 
   ws.on('message', (message) => {
     try {
@@ -41,12 +49,18 @@ export const handleWebSocket = (ws, req) => {
 
       if (data.event === 'start') {
         callSid = data.start.callSid;
-        openAIService.callSid = callSid;
+        if (data.start.customParameters) {
+          callerId = data.start.customParameters.callerId || 'unknown';
+          mode = data.start.customParameters.mode || 'inbound';
+        }
+
+        openAIService = new OpenAIRealtimeService(ws, callSid, callerId, mode);
+        openAIService.connect();
         openAIService.handleTwilioMedia(data);
-      } else if (data.event === 'media') {
+      } else if (data.event === 'media' && openAIService) {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
@@ -56,8 +70,29 @@ export const handleWebSocket = (ws, req) => {
 
   ws.on('close', () => {
     logger.info('WebSocket connection closed');
-    if (openAIService.openaiWs) {
+    if (openAIService && openAIService.openaiWs) {
         openAIService.openaiWs.close();
     }
   });
+};
+
+export const statusCallback = (req, res) => {
+  try {
+    const callStatus = req.body.CallStatus;
+    const callSid = req.body.CallSid;
+    logger.info(`Call ${callSid} status updated to: ${callStatus}`);
+
+    import('../services/dripService.js').then(module => {
+      if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(callStatus)) {
+         module.handleCallEnded();
+      }
+    }).catch(err => {
+      logger.error('Error importing dripService dynamically for status callback', err);
+    });
+
+    res.status(200).send('OK');
+  } catch (error) {
+    logger.error('Error in status callback:', error);
+    res.status(500).send('Internal Server Error');
+  }
 };
