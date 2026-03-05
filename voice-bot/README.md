@@ -1,7 +1,7 @@
-# 🤖 Voice Bot con OpenAI Realtime & Twilio 📞
+# 🤖 1WIRE AI COLD CALLER (SARAH) 📞
 
-¡Bienvenido a tu **Voice Bot** de última generación! 🚀
-Este proyecto es un asistente de voz inteligente capaz de atender llamadas telefónicas en tiempo real, hablar en inglés y español, agendar citas y responder preguntas frecuentes. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
+¡Bienvenido a **Sarah**, tu Asistente de IA (1Wire Assistant) de última generación! 🚀
+Este proyecto es un asistente de voz experto capaz de atender y realizar llamadas (Smart Drip) en tiempo real, agendando Evaluaciones Técnicas con una latencia mínima y la voz natural "Coral" de OpenAI. 🗣️✨
 
 ---
 
@@ -22,9 +22,9 @@ Este proyecto es un asistente de voz inteligente capaz de atender llamadas telef
 
 *   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI.
 *   **Bilingüe**: Detecta y habla Español 🇪🇸 e Inglés 🇺🇸 automáticamente.
-*   **Inteligente**: Responde preguntas frecuentes (FAQs) 🧠.
-*   **Agenda Citas**: Gestiona reservas de horas y fechas 📅.
-*   **Transferencias**: Pasa la llamada a un humano si es necesario 👤.
+*   **Smart Drip**: Realiza llamadas automatizadas salientes dentro de horarios de oficina (Mountain Time) 📅.
+*   **VAD Optimizado**: Voice Activity Detection de 1500ms para evitar interrupciones ⏱️.
+*   **Reportes Color-coded**: Notificaciones de correo electrónico basadas en el resultado (Verde para Citas, Naranja para Reportes) 📧.
 *   **Logs**: Guarda registro de todo lo que sucede 📝.
 
 ---
@@ -37,6 +37,7 @@ Antes de empezar, asegúrate de tener:
 *   Una cuenta en **Twilio** con un número de teléfono. [Registrarse](https://www.twilio.com/)
 *   Una cuenta en **OpenAI** con acceso a la API (Key). [Obtener API Key](https://platform.openai.com/)
 *   **Ngrok** (para pruebas locales). [Descargar](https://ngrok.com/)
+*   Cuenta de correo con SMTP habilitado.
 
 ---
 
@@ -94,6 +95,13 @@ TWILIO_PHONE_NUMBER=+1234567890
 # 🌐 Tu URL pública (Ngrok o Dominio real)
 # No olvides incluir 'https://' y sin barra al final
 PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+
+# 📧 SMTP y Email
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tu-email@gmail.com
+SMTP_PASS=tu-password-app
+NOTIFICATION_EMAIL=notificaciones@tuempresa.com
 ```
 
 ---
@@ -154,9 +162,10 @@ Para que no te pierdas, aquí está organizado todo:
 ├── src/
 │   ├── config/          # ⚙️ Configuración y Prompts del sistema
 │   ├── controllers/     # 🎮 Controladores de llamadas y rutas
-│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Agenda, FAQ)
+│   ├── data/            # 📁 JSON DB (clients, leads, interactions)
+│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Smart Drip, Emails)
 │   ├── utils/           # 🛠️ Herramientas (Logger, Validador)
-│   └── server.js        # 🏁 Punto de entrada del servidor
+│   └── server.js        # 🏁 Punto de entrada de Fastify
 ├── .env                 # 🔐 Tus secretos (¡No compartir!)
 ├── package.json         # 📦 Lista de librerías
 └── README.md            # 📖 Este manual
