@@ -1,38 +1,38 @@
 import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
+import { releaseCallLock } from '../services/dripService.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
-export const inboundCall = (req, res) => {
+export const inboundCall = (req, reply) => {
   try {
     logger.info('Incoming call received');
     const response = new VoiceResponse();
     const connect = response.connect();
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    stream.parameter({ name: 'mode', value: 'inbound' });
+    stream.parameter({ name: 'callerId', value: req.body.From || 'Unknown' });
 
-    res.type('text/xml');
-    res.send(response.toString());
+    reply.type('text/xml');
+    reply.send(response.toString());
   } catch (error) {
     logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
+    reply.status(500).send('Internal Server Error');
   }
 };
 
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
+  let callerId = 'unknown';
+  let mode = 'inbound';
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
+  const openAIService = new OpenAIRealtimeService(ws, callSid, callerId, mode);
   openAIService.connect();
 
   ws.on('message', (message) => {
@@ -41,12 +41,20 @@ export const handleWebSocket = (ws, req) => {
 
       if (data.event === 'start') {
         callSid = data.start.callSid;
+
+        if (data.start.customParameters) {
+          callerId = data.start.customParameters.callerId || 'unknown';
+          mode = data.start.customParameters.mode || 'inbound';
+        }
+
         openAIService.callSid = callSid;
+        openAIService.callerId = callerId;
+        openAIService.mode = mode;
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
@@ -60,4 +68,17 @@ export const handleWebSocket = (ws, req) => {
         openAIService.openaiWs.close();
     }
   });
+};
+
+export const statusCallback = (req, reply) => {
+    const status = req.body.CallStatus;
+    const callSid = req.body.CallSid;
+    logger.info(`Call ${callSid} status updated to: ${status}`);
+
+    // Release the drip service lock if the outbound call has ended
+    if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(status)) {
+        releaseCallLock();
+    }
+
+    reply.send('OK');
 };
