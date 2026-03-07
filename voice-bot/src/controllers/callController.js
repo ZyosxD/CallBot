@@ -1,39 +1,56 @@
 import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
+import { handleCallEnded } from '../services/dripService.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
-export const inboundCall = (req, res) => {
+export const inboundCall = async (req, reply) => {
   try {
     logger.info('Incoming call received');
     const response = new VoiceResponse();
     const connect = response.connect();
+
+    // Pass callerId and mode as parameters
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    stream.parameter({ name: 'callerId', value: req.body.From });
+    stream.parameter({ name: 'mode', value: 'inbound' });
 
-    res.type('text/xml');
-    res.send(response.toString());
+    reply.type('text/xml');
+    reply.send(response.toString());
   } catch (error) {
-    logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
+    logger.error(`Error handling inbound call: ${error.message}`);
+    reply.status(500).send('Internal Server Error');
   }
 };
 
-export const handleWebSocket = (ws, req) => {
+export const statusCallback = async (req, reply) => {
+  try {
+    const { CallStatus, CallSid } = req.body;
+    logger.info(`Call ${CallSid} status updated to ${CallStatus}`);
+
+    if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(CallStatus)) {
+      handleCallEnded();
+    }
+
+    reply.status(200).send('OK');
+  } catch (error) {
+    logger.error(`Error in status callback: ${error.message}`);
+    reply.status(500).send('Error processing status update');
+  }
+};
+
+export const handleWebSocket = (connection, req) => {
+  const ws = connection.socket || connection; // For @fastify/websocket compatibility
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
-
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
-  openAIService.connect();
+  let callerId = 'unknown';
+  let mode = 'inbound';
+  let openAIService = null;
 
   ws.on('message', (message) => {
     try {
@@ -41,22 +58,37 @@ export const handleWebSocket = (ws, req) => {
 
       if (data.event === 'start') {
         callSid = data.start.callSid;
-        openAIService.callSid = callSid;
+
+        // Extract callerId and mode from custom parameters
+        const customParams = data.start.customParameters || {};
+        callerId = customParams.callerId || 'unknown';
+        mode = customParams.mode || 'inbound';
+
+        logger.info(`Stream started - CallSid: ${callSid}, CallerId: ${callerId}, Mode: ${mode}`);
+
+        openAIService = new OpenAIRealtimeService(ws, callSid, callerId, mode);
+        openAIService.connect();
+
+        // We delay passing the start event until OpenAI is connected, or pass it directly if we handle the flow inside
         openAIService.handleTwilioMedia(data);
-      } else if (data.event === 'media') {
+
+      } else if (data.event === 'media' && openAIService) {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
+        if (openAIService && openAIService.openaiWs) {
+          openAIService.openaiWs.close();
+        }
         ws.close();
       }
     } catch (error) {
-      logger.error('Error processing WebSocket message:', error);
+      logger.error(`Error processing WebSocket message: ${error.message}`);
     }
   });
 
   ws.on('close', () => {
     logger.info('WebSocket connection closed');
-    if (openAIService.openaiWs) {
+    if (openAIService && openAIService.openaiWs) {
         openAIService.openaiWs.close();
     }
   });
