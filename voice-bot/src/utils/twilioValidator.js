@@ -2,14 +2,13 @@ import twilio from 'twilio';
 import { config } from '../config/config.js';
 import logger from './logger.js';
 
-export const validateTwilioRequest = (req, res, next) => {
-  // Skip validation in local development if public URL is not set or localhost
+export const validateTwilioRequest = async (req, reply) => {
   if (!config.server.publicUrl || config.server.publicUrl.includes('localhost')) {
-    return next();
+    return;
   }
 
   const twilioSignature = req.headers['x-twilio-signature'];
-  const url = config.server.publicUrl + req.originalUrl;
+  const url = config.server.publicUrl + req.raw.url;
   const params = req.body;
 
   const requestIsValid = twilio.validateRequest(
@@ -19,10 +18,9 @@ export const validateTwilioRequest = (req, res, next) => {
     params
   );
 
-  if (requestIsValid) {
-    next();
-  } else {
+  if (!requestIsValid) {
     logger.warn('Invalid Twilio Signature');
-    res.status(403).send('Forbidden');
+    reply.status(403).send('Forbidden');
+    return reply;
   }
 };
