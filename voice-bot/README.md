@@ -1,7 +1,7 @@
 # 🤖 Voice Bot con OpenAI Realtime & Twilio 📞
 
-¡Bienvenido a tu **Voice Bot** de última generación! 🚀
-Este proyecto es un asistente de voz inteligente capaz de atender llamadas telefónicas en tiempo real, hablar en inglés y español, agendar citas y responder preguntas frecuentes. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
+¡Bienvenido al **1Wire AI Cold Caller (Sarah)** de última generación! 🚀
+Este proyecto es un asistente de voz inteligente, usando Fastify y la API Realtime de OpenAI. Su objetivo es hacer llamadas (Outbound) e Inbound para agendar Evaluaciones Técnicas de Internet, VoIP, e IT de manera agresiva y eficiente. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
 
 ---
 
@@ -21,11 +21,10 @@ Este proyecto es un asistente de voz inteligente capaz de atender llamadas telef
 ## 🌟 Características
 
 *   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI.
-*   **Bilingüe**: Detecta y habla Español 🇪🇸 e Inglés 🇺🇸 automáticamente.
-*   **Inteligente**: Responde preguntas frecuentes (FAQs) 🧠.
-*   **Agenda Citas**: Gestiona reservas de horas y fechas 📅.
-*   **Transferencias**: Pasa la llamada a un humano si es necesario 👤.
-*   **Logs**: Guarda registro de todo lo que sucede 📝.
+*   **Persona "Sarah"**: Una asistente de 1Wire en Utah, USA, usando la voz "coral" de OpenAI, con tono casual.
+*   **Smart Drip Engine**: Llama automáticamente a los clientes durante horario comercial.
+*   **Recolección "Trifecta"**: Obtiene Nombre, Empresa, Teléfono y Hora exacta antes de agendar citas.
+*   **Reportes de Correo**: Te envía un correo al agendar citas 🟢 o si el cliente no está interesado 🟠.
 
 ---
 
@@ -56,7 +55,7 @@ Instala todas las librerías necesarias ejecutando:
 npm install
 ```
 
-¡Verás como se instalan `express`, `twilio`, `openai`, `ws` y otras herramientas mágicas! 🧙‍♂️
+¡Verás como se instalan `fastify`, `@fastify/websocket`, `twilio`, `openai`, `nodemailer` y otras herramientas mágicas! 🧙‍♂️
 
 ---
 
@@ -94,6 +93,13 @@ TWILIO_PHONE_NUMBER=+1234567890
 # 🌐 Tu URL pública (Ngrok o Dominio real)
 # No olvides incluir 'https://' y sin barra al final
 PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+
+# 📧 Credenciales de SMTP (Para notificaciones de correo)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=tu-email@gmail.com
+SMTP_PASS=tu-contrasena-aplicacion
+NOTIFICATION_EMAIL=notificaciones@empresa.com
 ```
 
 ---
@@ -122,7 +128,8 @@ npm run dev
 Verás: `Server is running on port 3000` ✅
 
 ### 3. ¡Llama a tu Bot! 📱
-Marca a tu número de Twilio. ¡Jules debería contestarte!
+Marca a tu número de Twilio. ¡Sarah debería contestarte!
+El motor "Smart Drip" también se encargará de realizar las llamadas pendientes en tu `clients.json` si configuras tu URL correctamente y estás en el horario comercial.
 
 ---
 
@@ -154,8 +161,9 @@ Para que no te pierdas, aquí está organizado todo:
 ├── src/
 │   ├── config/          # ⚙️ Configuración y Prompts del sistema
 │   ├── controllers/     # 🎮 Controladores de llamadas y rutas
-│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Agenda, FAQ)
+│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Smart Drip, Emails)
 │   ├── utils/           # 🛠️ Herramientas (Logger, Validador)
+│   ├── data/            # 💾 Datos JSON (clients, leads, interactions)
 │   └── server.js        # 🏁 Punto de entrada del servidor
 ├── .env                 # 🔐 Tus secretos (¡No compartir!)
 ├── package.json         # 📦 Lista de librerías
