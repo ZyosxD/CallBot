@@ -1,0 +1,2 @@
+2026-03-10T04:33:55.761Z [INFO]: Server is running on port 3000
+2026-03-10T04:33:55.763Z [WARN]: WARNING: config.server.publicUrl is not set. Drip Service will not start.

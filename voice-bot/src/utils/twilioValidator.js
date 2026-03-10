@@ -2,27 +2,42 @@ import twilio from 'twilio';
 import { config } from '../config/config.js';
 import logger from './logger.js';
 
-export const validateTwilioRequest = (req, res, next) => {
-  // Skip validation in local development if public URL is not set or localhost
-  if (!config.server.publicUrl || config.server.publicUrl.includes('localhost')) {
-    return next();
+export const validateTwilioRequest = async (request, reply) => {
+  const twilioSignature = request.headers['x-twilio-signature'];
+
+  if (!twilioSignature) {
+    logger.warn('Missing Twilio signature');
+    return reply.status(403).send('Forbidden: Missing Twilio signature');
   }
 
-  const twilioSignature = req.headers['x-twilio-signature'];
-  const url = config.server.publicUrl + req.originalUrl;
-  const params = req.body;
+  const protocol = request.headers['x-forwarded-proto'] || 'http';
+  // Fastify request.raw.url gives the path + query string.
+  // We need the full exact URL that Twilio used.
+  const host = request.headers.host;
 
-  const requestIsValid = twilio.validateRequest(
+  // Try to use publicUrl config first, fallback to constructing it
+  let publicUrl = config.server.publicUrl;
+  let url = '';
+
+  if (publicUrl) {
+      // Remove trailing slash if exists
+      publicUrl = publicUrl.replace(/\/$/, "");
+      url = `${publicUrl}${request.raw.url}`;
+  } else {
+      url = `${protocol}://${host}${request.raw.url}`;
+  }
+
+  const params = request.body || {};
+
+  const isValid = twilio.validateRequest(
     config.twilio.authToken,
     twilioSignature,
     url,
     params
   );
 
-  if (requestIsValid) {
-    next();
-  } else {
-    logger.warn('Invalid Twilio Signature');
-    res.status(403).send('Forbidden');
+  if (!isValid) {
+    logger.warn(`Invalid Twilio signature for URL: ${url}`);
+    return reply.status(403).send('Forbidden: Invalid Twilio signature');
   }
 };
