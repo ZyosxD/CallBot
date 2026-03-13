@@ -9,14 +9,18 @@
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/websocket": "^11.2.0",
     "axios": "^1.6.0",
-    "dayjs": "^1.11.10",
-    "dotenv": "^16.4.0",
+    "dayjs": "^1.11.20",
+    "dotenv": "^16.6.1",
     "express": "^4.18.0",
-    "openai": "^4.28.0",
-    "twilio": "^5.0.0",
-    "uuid": "^9.0.0",
-    "winston": "^3.11.0",
+    "fastify": "^5.8.2",
+    "nodemailer": "^8.0.2",
+    "openai": "^4.104.0",
+    "twilio": "^5.13.0",
+    "uuid": "^9.0.1",
+    "winston": "^3.19.0",
     "ws": "^8.16.0"
   },
   "devDependencies": {
