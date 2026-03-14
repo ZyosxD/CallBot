@@ -1,35 +1,53 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import fastify from 'fastify';
+import fastifyWebsocket from '@fastify/websocket';
+import fastifyFormbody from '@fastify/formbody';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { startDrip } from './services/dripService.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+const app = fastify({ logger: false }); // We use our own winston logger
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Register plugins
+app.register(fastifyFormbody);
+app.register(fastifyWebsocket, {
+  options: { maxPayload: 1048576 }
+});
 
-// Routes
-app.use('/voice', router);
+// Register routes
+app.register(router, { prefix: '/voice' });
 
 // WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+app.register(async (fastifyInstance) => {
+  fastifyInstance.get('/voice/stream', { websocket: true }, (connection, req) => {
+    handleWebSocket(connection.socket, req);
+  });
 });
 
 // Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+app.setErrorHandler((error, request, reply) => {
+  logger.error(error.stack);
+  reply.status(500).send('Something broke!');
 });
 
-// Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    const PORT = config.server.port;
+    await app.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+
+    // Check public URL for outbound/drip capabilities
+    if (!config.server.publicUrl) {
+      logger.warn('WARNING: config.server.publicUrl is not set. Drip Service cannot start and Twilio Validation may fail.');
+    } else {
+      startDrip();
+    }
+
+  } catch (err) {
+    logger.error('Error starting server:', err);
+    process.exit(1);
+  }
+};
+
+startServer();
