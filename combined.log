@@ -1,0 +1,7 @@
+2026-03-15T04:24:07.361Z [INFO]: Server is running on port 3000
+2026-03-15T04:24:07.363Z [INFO]: Starting Smart Drip Engine...
+2026-03-15T04:24:17.620Z [INFO]: Outside operating hours. Pausing Smart Drip.
+2026-03-15T04:24:42.245Z [INFO]: Server is running on port 3000
+2026-03-15T04:24:42.247Z [INFO]: Starting Smart Drip Engine...
+2026-03-15T04:24:52.249Z [INFO]: Initiating outbound call to Test Client at +1234567890
+2026-03-15T04:24:52.250Z [ERROR]: Error in Smart Drip execution: accountSid must start with AC
