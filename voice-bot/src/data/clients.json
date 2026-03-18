@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "phone": "+18005550199",
+    "status": "PENDING",
+    "notes": "Interested in VoIP"
+  }
+]
