@@ -1,35 +1,50 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import fastifyWebsocket from '@fastify/websocket';
+import fastifyFormbody from '@fastify/formbody';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { startDripService } from './services/dripService.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+const fastify = Fastify({ logger: false });
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Register plugins
+fastify.register(fastifyFormbody);
+fastify.register(fastifyWebsocket, {
+  options: { maxPayload: 1048576 }
+});
 
-// Routes
-app.use('/voice', router);
+// Register routes
+fastify.register(router, { prefix: '/voice' });
 
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+// WebSocket route explicitly matching full Twilio path
+fastify.get('/voice/stream', { websocket: true }, (connection, req) => {
+  handleWebSocket(connection, req);
 });
 
 // Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+fastify.setErrorHandler((error, request, reply) => {
+  logger.error(error.stack);
+  reply.status(500).send('Something broke!');
 });
 
 // Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+const start = async () => {
+  try {
+    if (!config.server.publicUrl) {
+      logger.warn('PUBLIC_URL is not set. Drip Service will not start.');
+    } else {
+      startDripService();
+    }
+
+    const PORT = config.server.port;
+    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();
