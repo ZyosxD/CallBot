@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "phone": "+1234567890",
+    "status": "PENDING",
+    "notes": "Interested in fiber."
+  },
+  {
+    "id": 2,
+    "name": "Tech Solutions",
+    "phone": "+0987654321",
+    "status": "PENDING",
+    "notes": "Check their VoIP system."
+  }
+]
