@@ -1,7 +1,7 @@
-# 🤖 Voice Bot con OpenAI Realtime & Twilio 📞
+# 🤖 1WIRE AI COLD CALLER (SARAH) 📞
 
-¡Bienvenido a tu **Voice Bot** de última generación! 🚀
-Este proyecto es un asistente de voz inteligente capaz de atender llamadas telefónicas en tiempo real, hablar en inglés y español, agendar citas y responder preguntas frecuentes. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
+¡Bienvenido a tu nuevo asistente **Sarah**, optimizada para ventas al 10000%! 🚀
+Este proyecto es un asistente de voz inteligente capaz de atender llamadas telefónicas inbound y gestionar un Smart Drip de llamadas outbound, enfocado en agendar Evaluaciones Técnicas para servicios de Internet, VoIP e IT.
 
 ---
 
@@ -20,12 +20,12 @@ Este proyecto es un asistente de voz inteligente capaz de atender llamadas telef
 
 ## 🌟 Características
 
-*   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI.
-*   **Bilingüe**: Detecta y habla Español 🇪🇸 e Inglés 🇺🇸 automáticamente.
-*   **Inteligente**: Responde preguntas frecuentes (FAQs) 🧠.
-*   **Agenda Citas**: Gestiona reservas de horas y fechas 📅.
-*   **Transferencias**: Pasa la llamada a un humano si es necesario 👤.
-*   **Logs**: Guarda registro de todo lo que sucede 📝.
+*   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI (Fastify + WebSockets).
+*   **Voz Coral**: Utiliza la voz "Coral" para dar una sensación natural (usa "um", "uh").
+*   **Smart Drip (Outbound)**: Generación y manejo automático de llamadas utilizando `clients.json` en los horarios de Mountain Time configurados.
+*   **Gestión de Ventas**: Sigue un script estricto para generar "The Trifecta" e incrementar agendamientos.
+*   **Reportes de Correo Electrónico**: Sistema integrado con Nodemailer que envía reportes en inglés con estados codificados por colores.
+*   **Latencia**: Ajustada con un `silence_duration_ms` de 1500ms para nunca interrumpir.
 
 ---
 
@@ -56,19 +56,17 @@ Instala todas las librerías necesarias ejecutando:
 npm install
 ```
 
-¡Verás como se instalan `express`, `twilio`, `openai`, `ws` y otras herramientas mágicas! 🧙‍♂️
-
 ---
 
 ## ⚙️ Configuración de Twilio
 
-Para que Twilio sepa dónde enviar las llamadas, necesitamos configurar un Webhook.
+Para que Twilio sepa dónde enviar las llamadas, necesitamos configurar un Webhook para las inbound.
 
 1.  Ve a tu **Consola de Twilio** > **Phone Numbers** > **Manage** > **Active numbers**.
 2.  Haz clic en tu número de teléfono.
 3.  Baja hasta la sección **Voice & Fax**.
 4.  En **A CALL COMES IN**, selecciona **Webhook**.
-5.  Aquí pondrás tu URL pública (veremos como obtenerla con Ngrok en la sección "Ejecutar en Local").
+5.  Aquí pondrás tu URL pública:
     *   La URL se verá algo así: `https://tu-url-ngrok.app/voice/inbound`
     *   **IMPORTANTE**: Asegúrate de que sea `HTTP POST`.
 6.  ¡Guarda los cambios! 💾
@@ -86,14 +84,20 @@ OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx
 # 🚪 Puerto del servidor (por defecto 3000)
 PORT=3000
 
-# 📞 Credenciales de Twilio (Búscalas en tu consola de Twilio)
+# 📞 Credenciales de Twilio
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_PHONE_NUMBER=+1234567890
 
 # 🌐 Tu URL pública (Ngrok o Dominio real)
-# No olvides incluir 'https://' y sin barra al final
 PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+
+# ✉️ Correo electrónico
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tu-correo@gmail.com
+SMTP_PASS=tu-contraseña-de-aplicación
+NOTIFICATION_EMAIL=correo-destino@empresa.com
 ```
 
 ---
@@ -108,10 +112,7 @@ En una terminal nueva, ejecuta:
 ```bash
 ngrok http 3000
 ```
-Copiar la URL que dice `Forwarding` (ej: `https://a1b2-c3d4.ngrok-free.app`).
-
-👉 **Pega esta URL en tu archivo `.env` en `PUBLIC_URL`.**
-👉 **Pega esta URL + `/voice/inbound` en tu configuración de Twilio.**
+Copia la URL segura y pégala en `PUBLIC_URL` y en la config de Twilio.
 
 ### 2. Iniciar el Servidor
 En la terminal de tu proyecto, ejecuta:
@@ -119,49 +120,37 @@ En la terminal de tu proyecto, ejecuta:
 ```bash
 npm run dev
 ```
-Verás: `Server is running on port 3000` ✅
-
-### 3. ¡Llama a tu Bot! 📱
-Marca a tu número de Twilio. ¡Jules debería contestarte!
 
 ---
 
 ## 🌐 Despliegue en Servidor (Ubuntu/VPS)
 
-¿Listo para ir a producción? 🌍
+*   **Infraestructura Target:** AWS Server (Low RAM env) con **Swap Memory de 1GB** activa.
 
-1.  **Prepara el servidor**: Instala Node.js y Git en tu servidor Ubuntu.
-2.  **Sube el código**: Clona tu repo o sube los archivos.
-3.  **Instala dependencias**: `npm install`
-4.  **Configura el .env**: Crea el archivo `.env` con los datos reales.
-5.  **Usa PM2** (Gestor de procesos) para que no se apague nunca:
+1.  Sube el código e instala las dependencias (`npm install`).
+2.  Configura el `.env`.
+3.  Usa PM2:
     ```bash
-    sudo npm install -g pm2
-    pm2 start src/server.js --name "voice-bot"
+    pm2 start src/server.js --name "sarah-bot"
     pm2 save
     pm2 startup
     ```
-6.  **SSL y Dominio** (Opcional pero recomendado): Usa Nginx y Certbot para tener HTTPS seguro.
 
 ---
 
 ## 📂 Estructura del Proyecto
 
-Para que no te pierdas, aquí está organizado todo:
-
 ```
 /voice-bot/
 ├── src/
-│   ├── config/          # ⚙️ Configuración y Prompts del sistema
-│   ├── controllers/     # 🎮 Controladores de llamadas y rutas
-│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Agenda, FAQ)
-│   ├── utils/           # 🛠️ Herramientas (Logger, Validador)
-│   └── server.js        # 🏁 Punto de entrada del servidor
-├── .env                 # 🔐 Tus secretos (¡No compartir!)
-├── package.json         # 📦 Lista de librerías
-└── README.md            # 📖 Este manual
+│   ├── config/          # Configuración y Prompts de Sarah
+│   ├── controllers/     # Controladores Fastify y WebSocket
+│   ├── services/        # Lógica: OpenAI, Smart Drip, Emails
+│   ├── utils/           # Herramientas de logger y validación
+│   └── data/            # Almacenamiento JSON (clients, leads, interactions)
+│   └── server.js        # Punto de entrada
+├── package.json
+└── README.md
 ```
 
----
-
-Hecho con ❤️ y código por **Jules**. ¡Disfruta tu nuevo asistente! 🎉
+Hecho con ❤️ por **Jules**. ¡Disfruta vendiendo al 10000% con Sarah! 🎉
