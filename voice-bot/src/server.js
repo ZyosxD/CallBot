@@ -1,35 +1,63 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import fastifyWebsocket from '@fastify/websocket';
+import fastifyFormbody from '@fastify/formbody';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { startDrip, stopDrip } from './services/dripService.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+const fastify = Fastify({ logger: false }); // Disable default fastify logger to use winston
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Register plugins
+fastify.register(fastifyFormbody);
+fastify.register(fastifyWebsocket);
 
-// Routes
-app.use('/voice', router);
+// Register HTTP routes
+fastify.register(router, { prefix: '/voice' });
 
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+// Register WebSocket route directly matching the full path requested by Twilio
+fastify.get('/voice/stream', { websocket: true }, (connection, req) => {
+  handleWebSocket(connection, req);
 });
 
 // Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+fastify.setErrorHandler((error, request, reply) => {
+  logger.error(error.stack);
+  reply.status(500).send({ error: 'Something broke!' });
 });
 
 // Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
+const start = async () => {
+  try {
+    const PORT = config.server.port;
+    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+
+    // Start Smart Drip Engine
+    startDrip();
+
+  } catch (err) {
+    logger.error('Error starting server:', err);
+    process.exit(1);
+  }
+};
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received. Shutting down gracefully.');
+  stopDrip();
+  fastify.close().then(() => {
+    process.exit(0);
+  });
 });
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received. Shutting down gracefully.');
+  stopDrip();
+  fastify.close().then(() => {
+    process.exit(0);
+  });
+});
+
+start();
