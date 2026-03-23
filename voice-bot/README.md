@@ -1,7 +1,7 @@
-# 🤖 Voice Bot con OpenAI Realtime & Twilio 📞
+# 🤖 1WIRE AI COLD CALLER (SARAH) 📞
 
 ¡Bienvenido a tu **Voice Bot** de última generación! 🚀
-Este proyecto es un asistente de voz inteligente capaz de atender llamadas telefónicas en tiempo real, hablar en inglés y español, agendar citas y responder preguntas frecuentes. ¡Todo con una latencia mínima y voz súper natural! 🗣️✨
+Este proyecto implementa a Sarah, la asistente de 1Wire especializada en agendar Evaluaciones Técnicas para servicios de Internet, VoIP e IT. ¡Con una latencia mínima y voz súper natural usando el motor Realtime de OpenAI! 🗣️✨
 
 ---
 
@@ -21,11 +21,11 @@ Este proyecto es un asistente de voz inteligente capaz de atender llamadas telef
 ## 🌟 Características
 
 *   **Real-time Audio**: Conversaciones fluidas usando la API Realtime de OpenAI.
-*   **Bilingüe**: Detecta y habla Español 🇪🇸 e Inglés 🇺🇸 automáticamente.
-*   **Inteligente**: Responde preguntas frecuentes (FAQs) 🧠.
-*   **Agenda Citas**: Gestiona reservas de horas y fechas 📅.
-*   **Transferencias**: Pasa la llamada a un humano si es necesario 👤.
-*   **Logs**: Guarda registro de todo lo que sucede 📝.
+*   **Identidad Estricta**: Sarah (1Wire Assistant) habla con tono casual y enfocado en ventas agresivas pero amigables.
+*   **Motor Smart Drip**: Llamadas automatizadas (Outbound) respetando horarios estrictos (9:30-11:30 AM y 2:30-3:30 PM Mountain Time).
+*   **Agenda Evaluaciones**: Gestiona reservas obteniendo obligatoriamente "La Trifecta" (Nombre, Empresa, Teléfono Confirmado y Hora) 📅.
+*   **Reportes Automáticos**: Envía emails (Éxito verde o Reporte naranja) con detalles de la llamada 📝.
+*   **Infraestructura Ligera**: Construido sobre Fastify optimizado para entornos de baja RAM.
 
 ---
 
@@ -36,7 +36,7 @@ Antes de empezar, asegúrate de tener:
 *   **Node.js** (v18 o superior) instalado. [Descargar aquí](https://nodejs.org/)
 *   Una cuenta en **Twilio** con un número de teléfono. [Registrarse](https://www.twilio.com/)
 *   Una cuenta en **OpenAI** con acceso a la API (Key). [Obtener API Key](https://platform.openai.com/)
-*   **Ngrok** (para pruebas locales). [Descargar](https://ngrok.com/)
+*   **Ngrok** (para pruebas locales de llamadas entrantes). [Descargar](https://ngrok.com/)
 
 ---
 
@@ -56,13 +56,11 @@ Instala todas las librerías necesarias ejecutando:
 npm install
 ```
 
-¡Verás como se instalan `express`, `twilio`, `openai`, `ws` y otras herramientas mágicas! 🧙‍♂️
-
 ---
 
 ## ⚙️ Configuración de Twilio
 
-Para que Twilio sepa dónde enviar las llamadas, necesitamos configurar un Webhook.
+Para que Twilio sepa dónde enviar las llamadas entrantes, necesitamos configurar un Webhook.
 
 1.  Ve a tu **Consola de Twilio** > **Phone Numbers** > **Manage** > **Active numbers**.
 2.  Haz clic en tu número de teléfono.
@@ -86,14 +84,20 @@ OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx
 # 🚪 Puerto del servidor (por defecto 3000)
 PORT=3000
 
-# 📞 Credenciales de Twilio (Búscalas en tu consola de Twilio)
+# 📞 Credenciales de Twilio
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_PHONE_NUMBER=+1234567890
 
 # 🌐 Tu URL pública (Ngrok o Dominio real)
-# No olvides incluir 'https://' y sin barra al final
 PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+
+# 📧 Credenciales de Email (Nodemailer SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tu-email@gmail.com
+SMTP_PASS=tu-app-password
+REPORT_EMAIL_TO=reportes@tuempresa.com
 ```
 
 ---
@@ -102,27 +106,24 @@ PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
 
 ¡Hora de probarlo! Sigue estos pasos para ver la magia en tu computadora.
 
-### 1. Levantar el Túnel (Ngrok)
+### 1. Levantar el Túnel (Ngrok) - Opcional para Inbound
 En una terminal nueva, ejecuta:
 
 ```bash
 ngrok http 3000
 ```
-Copiar la URL que dice `Forwarding` (ej: `https://a1b2-c3d4.ngrok-free.app`).
-
-👉 **Pega esta URL en tu archivo `.env` en `PUBLIC_URL`.**
-👉 **Pega esta URL + `/voice/inbound` en tu configuración de Twilio.**
+Copiar la URL que dice `Forwarding` y pégala en tu archivo `.env` en `PUBLIC_URL` y en Twilio.
 
 ### 2. Iniciar el Servidor
-En la terminal de tu proyecto, ejecuta:
+Para iniciar el servidor y ejecutar correctamente el bot con manejo limpio de procesos previos:
 
 ```bash
-npm run dev
+kill $(lsof -t -i :3000) 2>/dev/null || true && cd voice-bot && PORT=3000 npm run start
 ```
-Verás: `Server is running on port 3000` ✅
 
-### 3. ¡Llama a tu Bot! 📱
-Marca a tu número de Twilio. ¡Jules debería contestarte!
+### 3. ¡Prueba la magia! 📱
+*   **Outbound**: Añade números a `src/data/clients.json` con status "PENDING". El sistema los llamará automáticamente en los horarios permitidos.
+*   **Inbound**: Llama a tu número de Twilio y Sarah te contestará lista para agendar.
 
 ---
 
@@ -130,38 +131,35 @@ Marca a tu número de Twilio. ¡Jules debería contestarte!
 
 ¿Listo para ir a producción? 🌍
 
-1.  **Prepara el servidor**: Instala Node.js y Git en tu servidor Ubuntu.
+1.  **Prepara el servidor**: Instala Node.js, PM2 y habilita 1GB de Swap Memory.
 2.  **Sube el código**: Clona tu repo o sube los archivos.
 3.  **Instala dependencias**: `npm install`
 4.  **Configura el .env**: Crea el archivo `.env` con los datos reales.
-5.  **Usa PM2** (Gestor de procesos) para que no se apague nunca:
+5.  **Usa PM2** para mantenerlo corriendo:
     ```bash
-    sudo npm install -g pm2
-    pm2 start src/server.js --name "voice-bot"
+    pm2 start src/server.js --name "sarah-bot"
     pm2 save
     pm2 startup
     ```
-6.  **SSL y Dominio** (Opcional pero recomendado): Usa Nginx y Certbot para tener HTTPS seguro.
 
 ---
 
 ## 📂 Estructura del Proyecto
 
-Para que no te pierdas, aquí está organizado todo:
-
 ```
 /voice-bot/
 ├── src/
-│   ├── config/          # ⚙️ Configuración y Prompts del sistema
-│   ├── controllers/     # 🎮 Controladores de llamadas y rutas
-│   ├── services/        # 🧠 Lógica de negocio (OpenAI, Agenda, FAQ)
-│   ├── utils/           # 🛠️ Herramientas (Logger, Validador)
-│   └── server.js        # 🏁 Punto de entrada del servidor
-├── .env                 # 🔐 Tus secretos (¡No compartir!)
-├── package.json         # 📦 Lista de librerías
-└── README.md            # 📖 Este manual
+│   ├── config/          # ⚙️ Configuración general y Prompts (Sarah Persona)
+│   ├── controllers/     # 🎮 Controladores Fastify de llamadas
+│   ├── data/            # 📁 Base de datos JSON (clients, leads, interactions)
+│   ├── services/        # 🧠 Lógica de Realtime OpenAI, Smart Drip y Emails
+│   ├── utils/           # 🛠️ Logger y Validador de Twilio
+│   └── server.js        # 🏁 Punto de entrada (Fastify)
+├── .env                 # 🔐 Secretos
+├── package.json         # 📦 Dependencias
+└── README.md            # 📖 Documentación
 ```
 
 ---
 
-Hecho con ❤️ y código por **Jules**. ¡Disfruta tu nuevo asistente! 🎉
+¡Disfruta tu nuevo asistente de ventas! 🎉
