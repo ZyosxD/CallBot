@@ -1,38 +1,52 @@
 import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
-export const inboundCall = (req, res) => {
+export const inboundCall = async (req, reply) => {
   try {
     logger.info('Incoming call received');
     const response = new VoiceResponse();
     const connect = response.connect();
+
+    // From req.body.From
+    const callerId = (req.body && req.body.From) ? req.body.From : 'unknown';
+
+    // The stream URL uses wss://${req.headers.host}/voice/stream
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    // We can pass mode=inbound and callerId
+    stream.parameter({ name: 'mode', value: 'inbound' });
+    stream.parameter({ name: 'callerId', value: callerId });
 
-    res.type('text/xml');
-    res.send(response.toString());
+    reply.type('text/xml');
+    reply.send(response.toString());
   } catch (error) {
     logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
+    reply.status(500).send('Internal Server Error');
   }
 };
 
 export const handleWebSocket = (ws, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
+  let callerId = 'unknown';
+  let mode = 'inbound'; // default
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
+  // Check req.query for outbound drip callerId / mode
+  if (req.query && req.query.callerId) {
+     callerId = req.query.callerId;
+  }
+  if (req.query && req.query.mode) {
+     mode = req.query.mode;
+  }
+
+  // We instantiate with nulls first, then populate on start event
+  const openAIService = new OpenAIRealtimeService(ws, callSid, callerId, mode);
   openAIService.connect();
 
   ws.on('message', (message) => {
@@ -42,11 +56,22 @@ export const handleWebSocket = (ws, req) => {
       if (data.event === 'start') {
         callSid = data.start.callSid;
         openAIService.callSid = callSid;
+
+        // Extract customParameters if they exist
+        if (data.start.customParameters) {
+          if (data.start.customParameters.mode) {
+             openAIService.mode = data.start.customParameters.mode;
+          }
+          if (data.start.customParameters.callerId) {
+             openAIService.callerId = data.start.customParameters.callerId;
+          }
+        }
+
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
