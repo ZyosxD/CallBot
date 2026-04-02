@@ -1,39 +1,80 @@
 import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
 import twilio from 'twilio';
 import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
+import { markCallEnded } from '../services/dripService.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
-export const inboundCall = (req, res) => {
+export const inboundCall = async (req, reply) => {
   try {
     logger.info('Incoming call received');
+    const callerId = (req.body && req.body.From) ? req.body.From : 'unknown';
+
     const response = new VoiceResponse();
     const connect = response.connect();
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${req.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    stream.parameter({ name: 'callerId', value: callerId });
+    stream.parameter({ name: 'mode', value: 'inbound' });
 
-    res.type('text/xml');
-    res.send(response.toString());
+    reply.type('text/xml').send(response.toString());
   } catch (error) {
     logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
+    reply.status(500).send('Internal Server Error');
   }
 };
 
-export const handleWebSocket = (ws, req) => {
+export const outboundCall = async (req, reply) => {
+  try {
+    logger.info('Outbound call answered');
+    const callerId = req.query.callerId || 'unknown';
+
+    const response = new VoiceResponse();
+    const connect = response.connect();
+    const stream = connect.stream({
+      url: `wss://${req.headers.host}/voice/stream`,
+    });
+
+    stream.parameter({ name: 'callerId', value: callerId });
+    stream.parameter({ name: 'mode', value: 'outbound' });
+
+    reply.type('text/xml').send(response.toString());
+  } catch (error) {
+    logger.error('Error handling outbound call:', error);
+    reply.status(500).send('Internal Server Error');
+  }
+};
+
+export const statusCallback = async (req, reply) => {
+  try {
+    const callSid = req.body.CallSid;
+    const callStatus = req.body.CallStatus;
+
+    logger.info(`Status callback received: CallSid ${callSid}, Status ${callStatus}`);
+
+    if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(callStatus)) {
+      markCallEnded(callSid);
+    }
+
+    reply.status(200).send('OK');
+  } catch (error) {
+    logger.error('Error handling status callback:', error);
+    reply.status(500).send('Internal Server Error');
+  }
+};
+
+export const handleWebSocket = (connection, req) => {
   logger.info('New WebSocket connection');
+  const ws = connection.socket ? connection.socket : connection;
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
   let callSid = 'unknown';
+  let callerId = 'unknown';
+  let mode = 'inbound';
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
-  openAIService.connect();
+  // Create openAIService instance but don't connect to OpenAI yet
+  const openAIService = new OpenAIRealtimeService(ws, callSid, callerId, mode);
 
   ws.on('message', (message) => {
     try {
@@ -41,12 +82,23 @@ export const handleWebSocket = (ws, req) => {
 
       if (data.event === 'start') {
         callSid = data.start.callSid;
+
+        if (data.start.customParameters) {
+          callerId = data.start.customParameters.callerId || 'unknown';
+          mode = data.start.customParameters.mode || 'inbound';
+        }
+
         openAIService.callSid = callSid;
+        openAIService.callerId = callerId;
+        openAIService.mode = mode;
+
+        // Start OpenAI connection and update twilio media
+        openAIService.connect();
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
