@@ -1,35 +1,48 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import formBody from '@fastify/formbody';
+import fastifyWebsocket from '@fastify/websocket';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
 import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { startDrip, stopDrip } from './services/dripService.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
-
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-
-// Routes
-app.use('/voice', router);
-
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+const app = Fastify({
+  logger: false // Use custom winston logger exclusively
 });
 
+// Middleware
+app.register(formBody);
+app.register(fastifyWebsocket);
+
+// Routes
+app.register(router, { prefix: '/voice' });
+
+// WebSocket route will be defined in router.js relative to prefix
+
 // Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+app.setErrorHandler((error, request, reply) => {
+  logger.error(error.stack);
+  reply.status(500).send('Something broke!');
+});
+
+// Graceful shutdown
+app.addHook('onClose', (instance, done) => {
+  stopDrip();
+  done();
 });
 
 // Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+const PORT = config.server.port || 3000;
+const start = async () => {
+  try {
+    await app.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+    startDrip();
+  } catch (err) {
+    logger.error(err);
+    process.exit(1);
+  }
+};
+
+start();
