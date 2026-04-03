@@ -1,0 +1,15 @@
+
+> voice-bot@1.0.0 start
+> node src/server.js
+
+2026-04-03T04:46:00.102Z [INFO]: Server is running on port 3000
+2026-04-03T04:46:00.104Z [INFO]: Starting Smart Drip Campaign engine...
+2026-04-03T04:46:00.391Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:46:30.119Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:47:00.146Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:47:30.177Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:48:00.208Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:48:30.238Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:49:00.267Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:49:30.301Z [INFO]: Drip: Outside operating hours, waiting.
+2026-04-03T04:50:00.326Z [INFO]: Drip: Outside operating hours, waiting.
