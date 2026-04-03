@@ -1,0 +1,2 @@
+2026-04-03T05:21:34.274Z [INFO]: Server is running on port 3000
+2026-04-03T05:21:34.278Z [ERROR]: Error starting drip service: Cannot find module '/app/voice-bot/src/services/dripService.js' imported from /app/voice-bot/src/server.js
