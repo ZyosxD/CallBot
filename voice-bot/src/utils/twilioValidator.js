@@ -2,27 +2,32 @@ import twilio from 'twilio';
 import { config } from '../config/config.js';
 import logger from './logger.js';
 
-export const validateTwilioRequest = (req, res, next) => {
-  // Skip validation in local development if public URL is not set or localhost
-  if (!config.server.publicUrl || config.server.publicUrl.includes('localhost')) {
-    return next();
+export const validateTwilioRequest = async (request, reply) => {
+  const twilioSignature = request.headers['x-twilio-signature'];
+  const params = request.body || {};
+
+  const publicUrl = config.server.publicUrl;
+  if (!publicUrl || publicUrl.includes('localhost') || publicUrl.includes('ngrok')) {
+    logger.info('Bypassing Twilio signature validation for local development.');
+    return;
   }
 
-  const twilioSignature = req.headers['x-twilio-signature'];
-  const url = config.server.publicUrl + req.originalUrl;
-  const params = req.body;
+  const url = `${publicUrl}${request.raw.url}`;
 
-  const requestIsValid = twilio.validateRequest(
+  if (!twilioSignature) {
+    logger.warn('Twilio signature missing');
+    return reply.code(403).send('Forbidden');
+  }
+
+  const isValid = twilio.validateRequest(
     config.twilio.authToken,
     twilioSignature,
     url,
     params
   );
 
-  if (requestIsValid) {
-    next();
-  } else {
-    logger.warn('Invalid Twilio Signature');
-    res.status(403).send('Forbidden');
+  if (!isValid) {
+    logger.warn('Invalid Twilio signature');
+    return reply.code(403).send('Forbidden');
   }
 };
