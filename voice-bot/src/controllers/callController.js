@@ -5,48 +5,94 @@ import { config } from '../config/config.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
-export const inboundCall = (req, res) => {
+export const inboundCall = async (request, reply) => {
   try {
-    logger.info('Incoming call received');
+    const callerId = request.query?.callerId || request.body?.From || 'unknown';
+    const mode = request.query?.mode || 'inbound';
+
+    logger.info(`Incoming call received from ${callerId} (Mode: ${mode})`);
+
     const response = new VoiceResponse();
     const connect = response.connect();
-    const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
-    });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    const streamUrl = `wss://${request.headers.host}/voice/stream`;
+    const streamParams = { url: streamUrl };
 
-    res.type('text/xml');
-    res.send(response.toString());
+    const stream = connect.stream(streamParams);
+    stream.parameter({ name: 'callerId', value: callerId });
+    stream.parameter({ name: 'mode', value: mode });
+
+    reply.type('text/xml');
+    return reply.send(response.toString());
   } catch (error) {
     logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
+    return reply.code(500).send('Internal Server Error');
   }
 };
 
-export const handleWebSocket = (ws, req) => {
+export const inboundStatus = async (request, reply) => {
+  try {
+    const callStatus = request.body?.CallStatus;
+    const callSid = request.body?.CallSid;
+    logger.info(`Call status update received: ${callSid} is ${callStatus}`);
+
+    const terminalStatuses = ['completed', 'busy', 'failed', 'no-answer', 'canceled'];
+    if (terminalStatuses.includes(callStatus)) {
+        const { releaseCallLock } = await import('../services/dripService.js');
+        releaseCallLock(callSid);
+    }
+
+    return reply.send('OK');
+  } catch (error) {
+    logger.error('Error handling call status:', error);
+    return reply.code(500).send('Internal Server Error');
+  }
+};
+
+export const handleWebSocket = (connection, req) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
-  let callSid = 'unknown';
+  const ws = connection.socket ? connection.socket : connection;
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
+  let callSid = 'unknown';
+  let callerId = 'unknown';
+  let mode = 'inbound';
+
+  const openAIService = new OpenAIRealtimeService(ws, callSid, callerId, mode);
   openAIService.connect();
 
-  ws.on('message', (message) => {
+  ws.on('message', async (message) => {
     try {
       const data = JSON.parse(message);
 
       if (data.event === 'start') {
         callSid = data.start.callSid;
         openAIService.callSid = callSid;
+
+        if (data.start.customParameters) {
+            if (data.start.customParameters.callerId) {
+                callerId = data.start.customParameters.callerId;
+                openAIService.callerId = callerId;
+            }
+            if (data.start.customParameters.mode) {
+                mode = data.start.customParameters.mode;
+                openAIService.mode = mode;
+            }
+        }
+
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'media') {
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
+
+        try {
+            const { releaseCallLock } = await import('../services/dripService.js');
+            releaseCallLock(callSid);
+        } catch (e) {
+            logger.error('Error releasing lock on stream stop:', e);
+        }
+
         ws.close();
       }
     } catch (error) {
@@ -54,9 +100,17 @@ export const handleWebSocket = (ws, req) => {
     }
   });
 
-  ws.on('close', () => {
-    logger.info('WebSocket connection closed');
-    if (openAIService.openaiWs) {
+  ws.on('close', async () => {
+    logger.info(`WebSocket connection closed for call ${callSid}`);
+
+    try {
+        const { releaseCallLock } = await import('../services/dripService.js');
+        releaseCallLock(callSid);
+    } catch (e) {
+        logger.error('Error releasing lock on socket close:', e);
+    }
+
+    if (openAIService.openaiWs && openAIService.openaiWs.readyState === 1) {
         openAIService.openaiWs.close();
     }
   });
