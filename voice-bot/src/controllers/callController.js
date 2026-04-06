@@ -1,63 +1,81 @@
 import { OpenAIRealtimeService } from '../services/openaiRealtime.js';
-import twilio from 'twilio';
 import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
+import { markCallEnded } from '../services/dripService.js';
 
-const VoiceResponse = twilio.twiml.VoiceResponse;
+export const handleInbound = async (request, reply) => {
+  const callerId = request.body?.From || 'unknown';
+  logger.info(`Incoming call from ${callerId}`);
 
-export const inboundCall = (req, res) => {
-  try {
-    logger.info('Incoming call received');
-    const response = new VoiceResponse();
-    const connect = response.connect();
-    const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
-    });
+  const host = request.headers.host;
+  const streamUrl = `wss://${host}/voice/stream?mode=inbound&callerId=${encodeURIComponent(callerId)}`;
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+  const twiml = `
+    <Response>
+      <Connect>
+        <Stream url="${streamUrl}" />
+      </Connect>
+    </Response>
+  `;
 
-    res.type('text/xml');
-    res.send(response.toString());
-  } catch (error) {
-    logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
-  }
+  reply.type('text/xml').send(twiml);
 };
 
-export const handleWebSocket = (ws, req) => {
-  logger.info('New WebSocket connection');
+export const handleInboundStatus = async (request, reply) => {
+  const { CallStatus, CallSid } = request.body;
+  logger.info(`Inbound call status update: ${CallStatus} for SID: ${CallSid}`);
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
-  let callSid = 'unknown';
+  if (['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(CallStatus)) {
+    // Attempt dynamic import as noted in memory to avoid circular deps if needed
+    import('../services/dripService.js').then((module) => {
+        module.markCallEnded(CallSid);
+    }).catch(err => logger.error("Error dynamically importing dripService in inbound status", err));
+  }
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
-  openAIService.connect();
+  reply.send({ success: true });
+};
 
-  ws.on('message', (message) => {
+export const handleOutboundStatus = async (request, reply) => {
+  const { CallStatus, CallSid } = request.body;
+  logger.info(`Outbound call status update: ${CallStatus} for SID: ${CallSid}`);
+
+  if (['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(CallStatus)) {
+    import('../services/dripService.js').then((module) => {
+        module.markCallEnded(CallSid);
+    }).catch(err => logger.error("Error dynamically importing dripService in outbound status", err));
+  }
+
+  reply.send({ success: true });
+};
+
+export const handleWebSocket = (connection, req) => {
+  const socket = connection.socket ? connection.socket : connection;
+  const mode = req.query?.mode || 'inbound';
+  const callerId = req.query?.callerId || 'unknown';
+
+  logger.info(`WebSocket connection established for ${mode} call. Caller ID: ${callerId}`);
+
+  const realtimeService = new OpenAIRealtimeService(socket, null, mode, callerId);
+  realtimeService.connect();
+
+  socket.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-
-      if (data.event === 'start') {
-        callSid = data.start.callSid;
-        openAIService.callSid = callSid;
-        openAIService.handleTwilioMedia(data);
-      } else if (data.event === 'media') {
-        openAIService.handleTwilioMedia(data);
-      } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
-        ws.close();
-      }
+      realtimeService.handleTwilioMedia(data);
     } catch (error) {
-      logger.error('Error processing WebSocket message:', error);
+      logger.error('Error parsing Twilio media message:', error);
     }
   });
 
-  ws.on('close', () => {
-    logger.info('WebSocket connection closed');
-    if (openAIService.openaiWs) {
-        openAIService.openaiWs.close();
+  socket.on('close', () => {
+    logger.info('WebSocket closed');
+    if (realtimeService.callSid) {
+       import('../services/dripService.js').then((module) => {
+            module.markCallEnded(realtimeService.callSid);
+       }).catch(err => logger.error("Error dynamically importing dripService on WS close", err));
     }
+  });
+
+  socket.on('error', (error) => {
+    logger.error('WebSocket Error:', error);
   });
 };
