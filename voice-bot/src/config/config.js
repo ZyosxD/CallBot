@@ -4,14 +4,21 @@ dotenv.config();
 export const config = {
   server: {
     port: process.env.PORT || 3000,
-    publicUrl: process.env.PUBLIC_URL
+    publicUrl: process.env.PUBLIC_URL || null,
   },
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID,
     authToken: process.env.TWILIO_AUTH_TOKEN,
-    phoneNumber: process.env.TWILIO_PHONE_NUMBER
+    phoneNumber: process.env.TWILIO_PHONE_NUMBER,
   },
   openai: {
-    apiKey: process.env.OPENAI_API_KEY
+    apiKey: process.env.OPENAI_API_KEY,
+  },
+  email: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: process.env.SMTP_PORT || 587,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    to: process.env.NOTIFICATION_EMAIL || 'reports@1wire.com'
   }
 };

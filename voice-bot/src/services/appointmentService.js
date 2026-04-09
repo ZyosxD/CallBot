@@ -23,11 +23,11 @@ export const createAppointment = async (data) => {
     };
 
     appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    logger.info(`Appointment created for ${name} on ${date} at ${time}`);
 
     return {
       success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
+      message: `Appointment confirmed for ${name} on ${date} at ${time}.`,
       appointment
     };
 
