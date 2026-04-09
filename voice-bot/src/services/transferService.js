@@ -17,7 +17,7 @@ export const transferToHuman = (callSid) => {
     response.say('Transferring you to a human agent. Please hold.');
     response.dial('+15555555555'); // Replace with actual support number
 
-    logger.info(\`Generating transfer TwiML for call \${callSid}\`);
+    logger.info(`Generating transfer TwiML for call ${callSid}`);
     return response.toString();
 
   } catch (error) {
