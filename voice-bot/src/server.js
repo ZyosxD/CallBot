@@ -1,35 +1,57 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import formbody from '@fastify/formbody';
+import websocket from '@fastify/websocket';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
-import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+// We will need to import startDrip and stopDrip later when dripService is implemented
+// import { startDrip, stopDrip } from './services/dripService.js';
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+const fastify = Fastify({ logger: false });
 
-// Routes
-app.use('/voice', router);
+// Register plugins
+fastify.register(formbody);
+fastify.register(websocket);
 
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+// Register routes
+fastify.register(router, { prefix: '/voice' });
+
+// Global Error handling
+fastify.setErrorHandler((error, request, reply) => {
+  logger.error(error.stack);
+  reply.status(500).send('Something broke!');
 });
 
-// Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+// Lifecycle hooks
+fastify.addHook('onClose', async (instance, done) => {
+  logger.info('Server closing...');
+  try {
+    const { stopDrip } = await import('./services/dripService.js');
+    stopDrip();
+  } catch (e) {
+    logger.warn('dripService not available yet for stopDrip');
+  }
+  done();
 });
 
 // Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+const start = async () => {
+  try {
+    const PORT = config.server.port;
+    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+
+    try {
+      const { startDrip } = await import('./services/dripService.js');
+      startDrip();
+    } catch (e) {
+      logger.warn('dripService not available yet for startDrip');
+    }
+  } catch (err) {
+    logger.error('Failed to start server:', err);
+    process.exit(1);
+  }
+};
+
+start();
