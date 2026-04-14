@@ -1,0 +1,9 @@
+
+> voice-bot@1.0.0 start
+> node src/server.js
+
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+2026-04-14T04:33:21.045Z [INFO]: Server is running on port 3000
+2026-04-14T04:33:21.053Z [INFO]: Starting Smart Drip Engine...
+2026-04-14T04:34:13.493Z [INFO]: Incoming call received
+2026-04-14T04:35:08.631Z [INFO]: Received status callback for call CA1234: completed

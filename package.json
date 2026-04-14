@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/websocket": "^11.2.0",
+    "dayjs": "^1.11.20",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.4",
+    "nodemailer": "^8.0.5",
+    "openai": "^6.34.0",
+    "twilio": "^5.13.1",
+    "winston": "^3.19.0"
+  }
+}
