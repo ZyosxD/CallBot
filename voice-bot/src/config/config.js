@@ -13,5 +13,11 @@ export const config = {
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY
+  },
+  email: {
+    service: 'gmail', // Nodemailer uses Gmail SMTP
+    user: process.env.EMAIL_USER || 'test@gmail.com',
+    pass: process.env.EMAIL_PASS || 'password',
+    to: process.env.EMAIL_TO || 'reports@1wire.co'
   }
 };
