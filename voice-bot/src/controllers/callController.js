@@ -5,35 +5,56 @@ import { config } from '../config/config.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
-export const inboundCall = (req, res) => {
+export const inboundCall = async (request, reply) => {
   try {
     logger.info('Incoming call received');
+    const callerId = request.body?.From || 'unknown';
+
     const response = new VoiceResponse();
     const connect = response.connect();
+
     const stream = connect.stream({
-      url: \`wss://\${req.headers.host}/voice/stream\`,
+      url: `wss://${request.headers.host}/voice/stream`,
     });
 
-    // Pass the CallSid as a parameter to the stream if needed,
-    // or just rely on the start message from Twilio which contains CallSid
+    // Pass mode and callerId as custom parameters
+    stream.parameter({ name: 'mode', value: 'inbound' });
+    stream.parameter({ name: 'callerId', value: callerId });
 
-    res.type('text/xml');
-    res.send(response.toString());
+    reply.type('text/xml');
+    reply.send(response.toString());
   } catch (error) {
     logger.error('Error handling inbound call:', error);
-    res.status(500).send('Internal Server Error');
+    reply.status(500).send('Internal Server Error');
   }
 };
 
-export const handleWebSocket = (ws, req) => {
+export const inboundStatus = async (request, reply) => {
+  const { CallStatus, CallSid } = request.body || {};
+  logger.info(`Inbound call status update: ${CallStatus} for SID: ${CallSid}`);
+
+  if (['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(CallStatus)) {
+    // Dynamic import to avoid circular dependency issues
+    import('../services/dripService.js').then(module => {
+      module.markCallEnded(CallSid);
+    }).catch(err => {
+      logger.error('Error importing dripService dynamically for inboundStatus', err);
+    });
+  }
+
+  reply.status(200).send('OK');
+};
+
+export const handleWebSocket = (connection, request) => {
   logger.info('New WebSocket connection');
 
-  // We can extract CallSid from the query params if we added it in the TwiML url
-  // or wait for the 'start' event from Twilio.
-  let callSid = 'unknown';
+  // Extract socket from connection for Fastify v11
+  const ws = connection.socket ? connection.socket : connection;
 
-  const openAIService = new OpenAIRealtimeService(ws, callSid);
-  openAIService.connect();
+  let callSid = 'unknown';
+  let mode = 'inbound';
+  let callerId = 'unknown';
+  let openAIService = null;
 
   ws.on('message', (message) => {
     try {
@@ -41,12 +62,23 @@ export const handleWebSocket = (ws, req) => {
 
       if (data.event === 'start') {
         callSid = data.start.callSid;
-        openAIService.callSid = callSid;
+
+        // Extract parameters passed from TwiML
+        const customParams = data.start.customParameters || {};
+        mode = customParams.mode || 'inbound';
+        callerId = customParams.callerId || 'unknown';
+
+        logger.info(`Stream started for call ${callSid} in ${mode} mode with callerId ${callerId}`);
+
+        openAIService = new OpenAIRealtimeService(ws, callSid, mode, callerId);
+        openAIService.connect();
         openAIService.handleTwilioMedia(data);
       } else if (data.event === 'media') {
-        openAIService.handleTwilioMedia(data);
+        if (openAIService) {
+          openAIService.handleTwilioMedia(data);
+        }
       } else if (data.event === 'stop') {
-        logger.info(\`Stream stopped for call \${callSid}\`);
+        logger.info(`Stream stopped for call ${callSid}`);
         ws.close();
       }
     } catch (error) {
@@ -55,8 +87,16 @@ export const handleWebSocket = (ws, req) => {
   });
 
   ws.on('close', () => {
-    logger.info('WebSocket connection closed');
-    if (openAIService.openaiWs) {
+    logger.info(`WebSocket connection closed for call ${callSid}`);
+
+    // Dynamically import markCallEnded to avoid circular dependencies
+    import('../services/dripService.js').then(module => {
+      module.markCallEnded(callSid);
+    }).catch(err => {
+      logger.error('Error dynamically importing dripService on ws close', err);
+    });
+
+    if (openAIService && openAIService.openaiWs) {
         openAIService.openaiWs.close();
     }
   });
