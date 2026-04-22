@@ -1,35 +1,55 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import fastifyWebsocket from '@fastify/websocket';
+import fastifyFormbody from '@fastify/formbody';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
-import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+// Fastify is initialized with { logger: false } to use custom winston logger
+const fastify = Fastify({ logger: false });
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Register plugins
+fastify.register(fastifyFormbody);
+fastify.register(fastifyWebsocket);
 
-// Routes
-app.use('/voice', router);
+// Register routes
+fastify.register(router, { prefix: '/voice' });
 
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+// Graceful shutdown
+const listeners = ['SIGINT', 'SIGTERM'];
+listeners.forEach((signal) => {
+  process.on(signal, async () => {
+    logger.info(`Received ${signal}. Shutting down server gracefully...`);
+    await fastify.close();
+    process.exit(0);
+  });
 });
 
-// Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+fastify.addHook('onClose', async (instance, done) => {
+  try {
+    const { stopDrip } = await import('./services/dripService.js');
+    stopDrip();
+  } catch (error) {
+    logger.error('Error stopping drip on close:', error);
+  }
+  done();
 });
 
 // Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+const start = async () => {
+  try {
+    const PORT = config.server.port;
+    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+
+    // Explicitly call startDrip after fastify listens
+    const { startDrip } = await import('./services/dripService.js');
+    startDrip();
+
+  } catch (err) {
+    logger.error('Error starting server:', err);
+    process.exit(1);
+  }
+};
+
+start();
