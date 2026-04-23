@@ -1,11 +1,17 @@
-import express from 'express';
-import { inboundCall } from './callController.js';
+import { inboundCall, inboundStatus, handleWebSocket } from './callController.js';
 import { validateTwilioRequest } from '../utils/twilioValidator.js';
 
-const router = express.Router();
+export default async function router(fastify, options) {
+  // Validates Twilio signature and returns TwiML to connect to WebSocket
+  fastify.post('/inbound', { preHandler: validateTwilioRequest }, inboundCall);
 
-// POST /voice/inbound
-// Validates Twilio signature and returns TwiML to connect to WebSocket
-router.post('/inbound', validateTwilioRequest, inboundCall);
+  // Status callback for Twilio to release locks
+  fastify.post('/inbound/status', { preHandler: validateTwilioRequest }, inboundStatus);
 
-export default router;
+  // WebSocket endpoint
+  fastify.get('/stream', { websocket: true }, (connection, request) => {
+    // Extract native WebSocket based on @fastify/websocket version
+    const ws = connection.socket ? connection.socket : connection;
+    handleWebSocket(ws, request);
+  });
+}
