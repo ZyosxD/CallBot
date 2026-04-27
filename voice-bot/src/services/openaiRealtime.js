@@ -1,18 +1,27 @@
 import WebSocket from 'ws';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from '../config/config.js';
 import { prompts } from '../config/prompts.js';
 import logger, { logConversation } from '../utils/logger.js';
-import { createAppointment, checkAvailability } from './appointmentService.js';
-import { getFAQAnswer } from './faqService.js';
-import { transferToHuman } from './transferService.js';
-import twilio from 'twilio';
+import { sendSuccessEmail, sendReportEmail } from './emailService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const leadsFilePath = path.join(__dirname, '../data/leads.json');
+const interactionsFilePath = path.join(__dirname, '../data/interactions.json');
 
 export class OpenAIRealtimeService {
   constructor(ws, callSid) {
     this.ws = ws;
     this.callSid = callSid;
+    this.callerId = 'unknown';
+    this.mode = 'inbound';
     this.openaiWs = null;
     this.streamSid = null;
+    this.isOpenAiConnected = false;
+    this.isTwilioStarted = false;
   }
 
   async connect() {
@@ -26,7 +35,8 @@ export class OpenAIRealtimeService {
 
       this.openaiWs.on('open', () => {
         logger.info('Connected to OpenAI Realtime API');
-        this.sendSessionUpdate();
+        this.isOpenAiConnected = true;
+        this.checkAndInitializeSession();
       });
 
       this.openaiWs.on('message', (data) => {
@@ -39,6 +49,7 @@ export class OpenAIRealtimeService {
 
       this.openaiWs.on('close', () => {
         logger.info('OpenAI WebSocket Closed');
+        this.isOpenAiConnected = false;
       });
 
     } catch (error) {
@@ -46,61 +57,56 @@ export class OpenAIRealtimeService {
     }
   }
 
+  checkAndInitializeSession() {
+      if (this.isOpenAiConnected && this.isTwilioStarted) {
+          this.sendSessionUpdate();
+      }
+  }
+
   sendSessionUpdate() {
+    const instructions = this.mode === 'inbound' ? prompts.SARAH_INBOUND : prompts.SARAH_OUTBOUND;
     const sessionUpdate = {
       type: 'session.update',
       session: {
-        turn_detection: { type: 'server_vad' },
+        turn_detection: { type: 'server_vad', silence_duration_ms: 1500 },
         input_audio_format: 'g711_ulaw',
         output_audio_format: 'g711_ulaw',
-        voice: 'alloy',
-        instructions: prompts.systemInstruction,
+        voice: 'coral',
+        instructions: instructions,
         modalities: ["text", "audio"],
         temperature: 0.8,
         tools: [
           {
             type: "function",
-            name: "check_availability",
-            description: "Check availability for an appointment",
+            name: "schedule_appointment",
+            description: "Schedule a Technical Assessment after gathering the Trifecta information.",
             parameters: {
               type: "object",
               properties: {
-                date: { type: "string", description: "YYYY-MM-DD" },
-                time: { type: "string", description: "HH:mm" }
+                contactName: { type: "string", description: "Who to ask for" },
+                companyName: { type: "string", description: "Company name" },
+                confirmedPhone: { type: "string", description: "The verbally confirmed phone number" },
+                appointmentTime: { type: "string", description: "Exact scheduled time" }
               },
-              required: ["date", "time"]
+              required: ["contactName", "companyName", "confirmedPhone", "appointmentTime"]
             }
           },
           {
             type: "function",
-            name: "create_appointment",
-            description: "Create a new appointment",
+            name: "report_interaction",
+            description: "Log interaction if client is not interested, asked to call back, or reached voicemail.",
             parameters: {
               type: "object",
               properties: {
-                name: { type: "string", description: "Patient name" },
-                date: { type: "string", description: "YYYY-MM-DD" },
-                time: { type: "string", description: "HH:mm" }
+                reason: { type: "string", description: "Reason for logging (e.g. 'Not interested', 'Voicemail')" }
               },
-              required: ["name", "date", "time"]
+              required: ["reason"]
             }
           },
           {
             type: "function",
-            name: "get_faq_answer",
-            description: "Get answer for frequently asked questions",
-            parameters: {
-              type: "object",
-              properties: {
-                query: { type: "string", description: "User question" }
-              },
-              required: ["query"]
-            }
-          },
-          {
-            type: "function",
-            name: "transfer_call",
-            description: "Transfer the call to a human agent",
+            name: "end_call",
+            description: "End the call and say goodbye.",
             parameters: {
               type: "object",
               properties: {},
@@ -144,25 +150,50 @@ export class OpenAIRealtimeService {
 
   async handleFunctionCall(event) {
     const { name, arguments: args } = event;
-    const parsedArgs = JSON.parse(args);
     const callId = event.call_id;
-
-    logger.info(`Function call detected: ${name} with args: ${args}`);
+    let parsedArgs = {};
     let result = null;
 
+    logger.info(`Function call detected: ${name} with args: ${args}`);
+
     try {
-      if (name === 'check_availability') {
-        const available = await checkAvailability(parsedArgs.date, parsedArgs.time);
-        result = { available };
-      } else if (name === 'create_appointment') {
-        result = await createAppointment(parsedArgs);
-      } else if (name === 'get_faq_answer') {
-        const answer = getFAQAnswer(parsedArgs.query);
-        result = { answer: answer || "I don't have information about that." };
-      } else if (name === 'transfer_call') {
-        // Handle transfer
-        await this.handleTransfer();
-        result = { status: 'transferring' };
+      parsedArgs = JSON.parse(args);
+    } catch (e) {
+      logger.error('SyntaxError parsing tool arguments:', e);
+      parsedArgs = {}; // Fail somewhat gracefully
+    }
+
+    try {
+      if (name === 'schedule_appointment') {
+        const leadData = {
+           callerId: this.callerId,
+           ...parsedArgs,
+           timestamp: new Date().toISOString()
+        };
+        this.appendToFile(leadsFilePath, leadData);
+        await sendSuccessEmail(this.callerId, parsedArgs.confirmedPhone, parsedArgs);
+        result = { status: 'scheduled' };
+      } else if (name === 'report_interaction') {
+        const interactionData = {
+           callerId: this.callerId,
+           reason: parsedArgs.reason,
+           timestamp: new Date().toISOString()
+        };
+        this.appendToFile(interactionsFilePath, interactionData);
+        await sendReportEmail(this.callerId, parsedArgs.reason);
+        result = { status: 'reported' };
+      } else if (name === 'end_call') {
+        result = { status: 'ending_call' };
+
+        // Instruct the AI to say goodbye
+        this.sendToOpenAI({ type: 'response.create' });
+
+        // Delay 10 seconds before closing socket
+        setTimeout(() => {
+             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close();
+             }
+        }, 10000);
       }
 
       // Send result back to OpenAI
@@ -171,43 +202,41 @@ export class OpenAIRealtimeService {
         item: {
           type: 'function_call_output',
           call_id: callId,
-          output: JSON.stringify(result)
+          output: JSON.stringify(result || { status: 'success' })
         }
       };
       this.sendToOpenAI(functionOutput);
 
-      // Trigger a response generation
-      this.sendToOpenAI({ type: 'response.create' });
+      if (name !== 'end_call') {
+          // Trigger a response generation if we are not ending the call
+          this.sendToOpenAI({ type: 'response.create' });
+      }
 
     } catch (error) {
       logger.error(`Error executing function ${name}:`, error);
-      // Optionally send error back
+      // Ensure we reply to the function call even on error to avoid hang
+      this.sendToOpenAI({
+          type: 'conversation.item.create',
+          item: {
+            type: 'function_call_output',
+            call_id: callId,
+            output: JSON.stringify({ error: error.message })
+          }
+      });
     }
   }
 
-  async handleTransfer() {
-    try {
-        logger.info(`Initiating transfer for call ${this.callSid}`);
-        // Get TwiML for transfer
-        const twiml = transferToHuman(this.callSid);
-
-        // Update the call using Twilio REST API
-        const client = twilio(config.twilio.accountSid, config.twilio.authToken);
-        await client.calls(this.callSid).update({
-            twiml: twiml
-        });
-
-        // Close websocket as the call is being transferred
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.close();
-        }
-        if (this.openaiWs && this.openaiWs.readyState === WebSocket.OPEN) {
-            this.openaiWs.close();
-        }
-
-    } catch (error) {
-        logger.error('Error handling transfer:', error);
-    }
+  appendToFile(filePath, data) {
+      try {
+          let currentData = [];
+          if (fs.existsSync(filePath)) {
+              currentData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          }
+          currentData.push(data);
+          fs.writeFileSync(filePath, JSON.stringify(currentData, null, 2));
+      } catch (error) {
+          logger.error(`Error appending to ${filePath}:`, error);
+      }
   }
 
   sendAudioToTwilio(audioPayload) {
@@ -232,7 +261,9 @@ export class OpenAIRealtimeService {
   handleTwilioMedia(data) {
     if (data.event === 'start') {
       this.streamSid = data.start.streamSid;
+      this.isTwilioStarted = true;
       logger.info(`Stream started: ${this.streamSid}`);
+      this.checkAndInitializeSession();
     } else if (data.event === 'media') {
         const audioAppend = {
             type: 'input_audio_buffer.append',
