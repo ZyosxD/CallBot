@@ -2,14 +2,14 @@ import twilio from 'twilio';
 import { config } from '../config/config.js';
 import logger from './logger.js';
 
-export const validateTwilioRequest = (req, res, next) => {
-  // Skip validation in local development if public URL is not set or localhost
-  if (!config.server.publicUrl || config.server.publicUrl.includes('localhost')) {
+export const validateTwilioRequest = (req, reply, next) => {
+  if (!config.server.publicUrl || config.server.publicUrl.includes('localhost') || config.server.publicUrl.includes('ngrok')) {
     return next();
   }
 
   const twilioSignature = req.headers['x-twilio-signature'];
-  const url = config.server.publicUrl + req.originalUrl;
+  // In Fastify, req.raw.url contains the original URL including query strings
+  const url = config.server.publicUrl + req.raw.url;
   const params = req.body;
 
   const requestIsValid = twilio.validateRequest(
@@ -23,6 +23,6 @@ export const validateTwilioRequest = (req, res, next) => {
     next();
   } else {
     logger.warn('Invalid Twilio Signature');
-    res.status(403).send('Forbidden');
+    return reply.code(403).send('Forbidden');
   }
 };
