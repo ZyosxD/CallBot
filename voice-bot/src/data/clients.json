@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "company": "Tech Innovators",
+    "phone": "+18005550199",
+    "status": "PENDING"
+  },
+  {
+    "id": 2,
+    "company": "Local Bakery",
+    "phone": "+18005550200",
+    "status": "PENDING"
+  }
+]
