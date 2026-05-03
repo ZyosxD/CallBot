@@ -13,5 +13,9 @@ export const config = {
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY
+  },
+  email: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 };
