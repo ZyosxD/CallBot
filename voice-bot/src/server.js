@@ -1,35 +1,73 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import fastifyFormbody from '@fastify/formbody';
+import fastifyWebsocket from '@fastify/websocket';
 import { config } from './config/config.js';
-import router from './controllers/router.js';
-import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import router from './controllers/router.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+// We need to dynamically import startDrip and stopDrip to prevent circular dependencies early on
+// or we can just import them if dripService is implemented later
+let dripService;
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-
-// Routes
-app.use('/voice', router);
-
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+const fastify = Fastify({
+  logger: false // Custom logger is used instead
 });
+
+// Register plugins
+fastify.register(fastifyFormbody);
+fastify.register(fastifyWebsocket);
+
+// Register routes
+fastify.register(router, { prefix: '/voice' });
 
 // Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+fastify.setErrorHandler((error, request, reply) => {
+  logger.error(error.stack);
+  reply.status(500).send('Internal Server Error');
 });
 
-// Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
+// Graceful shutdown logic
+const stopGracefully = async () => {
+  logger.info('Received shutdown signal. Stopping...');
+  if (dripService && dripService.stopDrip) {
+      dripService.stopDrip();
+  }
+  await fastify.close();
+  process.exit(0);
+};
+
+process.on('SIGINT', stopGracefully);
+process.on('SIGTERM', stopGracefully);
+
+fastify.addHook('onClose', async (instance, done) => {
+    if (dripService && dripService.stopDrip) {
+        dripService.stopDrip();
+    }
+    done();
 });
+
+
+// Start server
+const startServer = async () => {
+  try {
+    const PORT = config.server.port;
+    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+
+    // Import and start drip dynamically
+    try {
+        dripService = await import('./services/dripService.js');
+        if (dripService.startDrip) {
+            dripService.startDrip();
+        }
+    } catch (e) {
+        logger.warn('dripService not found or failed to load yet. Drip will not start.', e.message);
+    }
+
+  } catch (err) {
+    logger.error('Failed to start server:', err);
+    process.exit(1);
+  }
+};
+
+startServer();

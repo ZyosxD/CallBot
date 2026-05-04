@@ -13,5 +13,12 @@ export const config = {
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY
+  },
+  email: {
+    smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+    smtpPort: process.env.SMTP_PORT || 587,
+    smtpUser: process.env.SMTP_USER,
+    smtpPass: process.env.SMTP_PASS,
+    notifyEmail: process.env.NOTIFY_EMAIL
   }
 };
