@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1,
+    "phone": "+1234567890",
+    "status": "PENDING"
+  },
+  {
+    "id": 2,
+    "phone": "+0987654321",
+    "status": "PENDING"
+  }
+]
