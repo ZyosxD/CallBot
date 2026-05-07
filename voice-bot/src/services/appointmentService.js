@@ -1,47 +1,55 @@
-import dayjs from 'dayjs';
+import fs from 'fs/promises';
+import path from 'path';
 import logger from '../utils/logger.js';
+import { sendEmail } from './emailService.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const LEADS_FILE = path.join(process.cwd(), 'leads.json');
 
-export const createAppointment = async (data) => {
-  try {
-    const { name, date, time } = data;
+export const createAppointment = async (appointmentData, callerId) => {
+    try {
+        let leads = [];
+        try {
+            const data = await fs.readFile(LEADS_FILE, 'utf8');
+            leads = JSON.parse(data);
+        } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+        }
 
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
+        const newLead = {
+            id: Date.now().toString(),
+            timestamp: new Date().toISOString(),
+            contactName: appointmentData.contactName,
+            companyName: appointmentData.companyName,
+            confirmedPhone: appointmentData.confirmedPhone,
+            appointmentTime: appointmentData.appointmentTime,
+            callerId: callerId
+        };
+
+        leads.push(newLead);
+        await fs.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2));
+
+        logger.info(`Appointment scheduled for ${newLead.companyName}`);
+
+        // Send Email Report
+        await sendEmail({
+            subject: '🟢 SUCCESS: New Technical Assessment Scheduled',
+            text: `
+A new Technical Assessment has been scheduled!
+
+Details:
+- Contact Name: ${newLead.contactName}
+- Company Name: ${newLead.companyName}
+- Appointment Time: ${newLead.appointmentTime}
+
+Phone Verification:
+- Caller ID: ${newLead.callerId}
+- Confirmed Phone: ${newLead.confirmedPhone}
+            `
+        });
+
+        return { status: 'success', message: 'Technical Assessment scheduled successfully.' };
+    } catch (error) {
+        logger.error('Error creating appointment:', error);
+        return { status: 'error', message: 'Failed to schedule appointment.' };
     }
-
-    // Mock saving appointment
-    const appointment = {
-      id: Date.now(),
-      name,
-      date,
-      time,
-      status: 'confirmed'
-    };
-
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
-
-    return {
-      success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
-    };
-
-  } catch (error) {
-    logger.error('Error creating appointment:', error);
-    return {
-      success: false,
-      message: 'Failed to create appointment.'
-    };
-  }
-};
-
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
 };
