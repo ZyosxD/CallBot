@@ -2,10 +2,8 @@ import WebSocket from 'ws';
 import { config } from '../config/config.js';
 import { prompts } from '../config/prompts.js';
 import logger, { logConversation } from '../utils/logger.js';
-import { createAppointment, checkAvailability } from './appointmentService.js';
-import { getFAQAnswer } from './faqService.js';
-import { transferToHuman } from './transferService.js';
-import twilio from 'twilio';
+import { createAppointment } from './appointmentService.js';
+import { logInteraction } from './interactionService.js';
 
 export class OpenAIRealtimeService {
   constructor(ws, callSid) {
@@ -13,6 +11,12 @@ export class OpenAIRealtimeService {
     this.callSid = callSid;
     this.openaiWs = null;
     this.streamSid = null;
+    this.callerId = 'unknown';
+    this.mode = 'inbound';
+
+    // Connection flags for session update
+    this.isOpenAiConnected = false;
+    this.isTwilioStarted = false;
   }
 
   async connect() {
@@ -26,7 +30,8 @@ export class OpenAIRealtimeService {
 
       this.openaiWs.on('open', () => {
         logger.info('Connected to OpenAI Realtime API');
-        this.sendSessionUpdate();
+        this.isOpenAiConnected = true;
+        this.checkAndInitializeSession();
       });
 
       this.openaiWs.on('message', (data) => {
@@ -46,61 +51,61 @@ export class OpenAIRealtimeService {
     }
   }
 
+  checkAndInitializeSession() {
+      if (this.isOpenAiConnected && this.isTwilioStarted) {
+          this.sendSessionUpdate();
+      }
+  }
+
   sendSessionUpdate() {
+    const personaPrompt = this.mode === 'outbound' ? prompts.sarahOutbound : prompts.sarahInbound;
+
     const sessionUpdate = {
       type: 'session.update',
       session: {
-        turn_detection: { type: 'server_vad' },
+        turn_detection: {
+            type: 'server_vad',
+            silence_duration_ms: 1500
+        },
         input_audio_format: 'g711_ulaw',
         output_audio_format: 'g711_ulaw',
-        voice: 'alloy',
-        instructions: prompts.systemInstruction,
+        voice: 'coral',
+        instructions: personaPrompt,
         modalities: ["text", "audio"],
         temperature: 0.8,
         tools: [
           {
             type: "function",
-            name: "check_availability",
-            description: "Check availability for an appointment",
+            name: "schedule_appointment",
+            description: "Schedule a technical assessment after getting the Trifecta.",
             parameters: {
               type: "object",
               properties: {
-                date: { type: "string", description: "YYYY-MM-DD" },
-                time: { type: "string", description: "HH:mm" }
+                contactName: { type: "string", description: "Name of the IT Manager or Owner" },
+                companyName: { type: "string", description: "Name of the company" },
+                confirmedPhone: { type: "string", description: "The verified direct phone number" },
+                appointmentTime: { type: "string", description: "Exact time and date for the technical assessment" }
               },
-              required: ["date", "time"]
+              required: ["contactName", "companyName", "confirmedPhone", "appointmentTime"]
             }
           },
           {
             type: "function",
-            name: "create_appointment",
-            description: "Create a new appointment",
+            name: "report_interaction",
+            description: "Log an interaction when client is not interested, asks to callback, or reaches voicemail.",
             parameters: {
               type: "object",
               properties: {
-                name: { type: "string", description: "Patient name" },
-                date: { type: "string", description: "YYYY-MM-DD" },
-                time: { type: "string", description: "HH:mm" }
+                reason: { type: "string", description: "Reason for interaction (e.g., 'not interested', 'voicemail', 'call back later')" },
+                details: { type: "string", description: "Any extra context" }
               },
-              required: ["name", "date", "time"]
+              required: ["reason"]
             }
           },
           {
             type: "function",
-            name: "get_faq_answer",
-            description: "Get answer for frequently asked questions",
-            parameters: {
-              type: "object",
-              properties: {
-                query: { type: "string", description: "User question" }
-              },
-              required: ["query"]
-            }
-          },
-          {
-            type: "function",
-            name: "transfer_call",
-            description: "Transfer the call to a human agent",
+            name: "end_call",
+            description: "End the call and say goodbye to the user.",
             parameters: {
               type: "object",
               properties: {},
@@ -126,11 +131,11 @@ export class OpenAIRealtimeService {
       }
 
       if (event.type === 'response.audio_transcript.done') {
-          logConversation(this.callSid, 'Assistant', event.transcript);
+          logConversation(this.callSid, 'Sarah', event.transcript);
       }
 
       if (event.type === 'conversation.item.input_audio_transcription.completed') {
-          logConversation(this.callSid, 'User', event.transcript);
+          logConversation(this.callSid, 'Client', event.transcript);
       }
 
       if (event.type === 'response.function_call_arguments.done') {
@@ -144,70 +149,54 @@ export class OpenAIRealtimeService {
 
   async handleFunctionCall(event) {
     const { name, arguments: args } = event;
-    const parsedArgs = JSON.parse(args);
     const callId = event.call_id;
 
     logger.info(`Function call detected: ${name} with args: ${args}`);
     let result = null;
+    let parsedArgs = {};
 
     try {
-      if (name === 'check_availability') {
-        const available = await checkAvailability(parsedArgs.date, parsedArgs.time);
-        result = { available };
-      } else if (name === 'create_appointment') {
-        result = await createAppointment(parsedArgs);
-      } else if (name === 'get_faq_answer') {
-        const answer = getFAQAnswer(parsedArgs.query);
-        result = { answer: answer || "I don't have information about that." };
-      } else if (name === 'transfer_call') {
-        // Handle transfer
-        await this.handleTransfer();
-        result = { status: 'transferring' };
+        parsedArgs = JSON.parse(args);
+    } catch (err) {
+        logger.error(`SyntaxError parsing arguments for ${name}:`, err);
+        result = { error: "Invalid JSON arguments provided by AI" };
+    }
+
+    if (!result) {
+        try {
+          if (name === 'schedule_appointment') {
+            result = await createAppointment(parsedArgs, this.callerId);
+          } else if (name === 'report_interaction') {
+            result = await logInteraction(parsedArgs, this.callerId);
+          } else if (name === 'end_call') {
+            result = { status: 'ending call' };
+
+            // Wait 10 seconds before forcefully closing to allow goodbye
+            setTimeout(() => {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.close();
+                }
+            }, 10000);
+          }
+        } catch (error) {
+          logger.error(`Error executing function ${name}:`, error);
+          result = { error: error.message };
+        }
+    }
+
+    // Send result back to OpenAI
+    const functionOutput = {
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: callId,
+        output: JSON.stringify(result)
       }
+    };
+    this.sendToOpenAI(functionOutput);
 
-      // Send result back to OpenAI
-      const functionOutput = {
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: callId,
-          output: JSON.stringify(result)
-        }
-      };
-      this.sendToOpenAI(functionOutput);
-
-      // Trigger a response generation
-      this.sendToOpenAI({ type: 'response.create' });
-
-    } catch (error) {
-      logger.error(`Error executing function ${name}:`, error);
-      // Optionally send error back
-    }
-  }
-
-  async handleTransfer() {
-    try {
-        logger.info(`Initiating transfer for call ${this.callSid}`);
-        // Get TwiML for transfer
-        const twiml = transferToHuman(this.callSid);
-
-        // Update the call using Twilio REST API
-        const client = twilio(config.twilio.accountSid, config.twilio.authToken);
-        await client.calls(this.callSid).update({
-            twiml: twiml
-        });
-
-        // Close websocket as the call is being transferred
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.close();
-        }
-        if (this.openaiWs && this.openaiWs.readyState === WebSocket.OPEN) {
-            this.openaiWs.close();
-        }
-
-    } catch (error) {
-        logger.error('Error handling transfer:', error);
-    }
+    // Trigger a response generation, especially important for end_call to say goodbye
+    this.sendToOpenAI({ type: 'response.create' });
   }
 
   sendAudioToTwilio(audioPayload) {
@@ -232,7 +221,9 @@ export class OpenAIRealtimeService {
   handleTwilioMedia(data) {
     if (data.event === 'start') {
       this.streamSid = data.start.streamSid;
+      this.isTwilioStarted = true;
       logger.info(`Stream started: ${this.streamSid}`);
+      this.checkAndInitializeSession();
     } else if (data.event === 'media') {
         const audioAppend = {
             type: 'input_audio_buffer.append',
