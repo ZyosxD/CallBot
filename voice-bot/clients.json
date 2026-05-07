@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "name": "Acme Corp",
+    "phone": "+1234567890",
+    "status": "PENDING"
+  },
+  {
+    "id": 2,
+    "name": "Globex",
+    "phone": "+1987654321",
+    "status": "PENDING"
+  }
+]
