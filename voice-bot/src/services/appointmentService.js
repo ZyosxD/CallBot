@@ -1,47 +1,48 @@
-import dayjs from 'dayjs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
+import { sendEmail } from './emailService.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const leadsFilePath = path.join(__dirname, '..', '..', 'leads.json');
 
-export const createAppointment = async (data) => {
+export const createAppointment = async (appointmentData, callerId) => {
   try {
-    const { name, date, time } = data;
+    const newLead = {
+      id: Date.now().toString(),
+      ...appointmentData,
+      twilioCallerId: callerId,
+      status: 'scheduled',
+      createdAt: new Date().toISOString()
+    };
 
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
+    let leads = [];
+    if (fs.existsSync(leadsFilePath)) {
+      const data = fs.readFileSync(leadsFilePath, 'utf8');
+      leads = JSON.parse(data);
     }
 
-    // Mock saving appointment
-    const appointment = {
-      id: Date.now(),
-      name,
-      date,
-      time,
-      status: 'confirmed'
-    };
+    leads.push(newLead);
+    fs.writeFileSync(leadsFilePath, JSON.stringify(leads, null, 2), 'utf8');
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    logger.info(`Appointment created for ${appointmentData.contactName} at ${appointmentData.exactTime}`);
 
-    return {
-      success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
-    };
+    // Trigger success email
+    const subject = `🟢 SUCCESS: Technical Assessment Scheduled - ${appointmentData.companyName}`;
+    const htmlContent = `
+        <h2>New Technical Assessment Scheduled</h2>
+        <p><strong>Contact Name:</strong> ${appointmentData.contactName}</p>
+        <p><strong>Company Name:</strong> ${appointmentData.companyName}</p>
+        <p><strong>Verified Phone:</strong> ${appointmentData.verifiedPhone}</p>
+        <p><strong>Twilio Caller ID:</strong> ${callerId}</p>
+        <p><strong>Exact Time:</strong> ${appointmentData.exactTime}</p>
+    `;
+    await sendEmail(subject, htmlContent);
 
+    return { status: 'success', message: 'Appointment scheduled successfully', appointmentId: newLead.id };
   } catch (error) {
     logger.error('Error creating appointment:', error);
-    return {
-      success: false,
-      message: 'Failed to create appointment.'
-    };
+    throw new Error('Failed to create appointment');
   }
-};
-
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
 };
