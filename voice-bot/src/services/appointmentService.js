@@ -1,47 +1,47 @@
-import dayjs from 'dayjs';
+import fs from 'fs';
+import path from 'path';
 import logger from '../utils/logger.js';
+import { sendEmail } from './emailService.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const leadsFilePath = path.resolve('leads.json');
+
+if (!fs.existsSync(leadsFilePath)) {
+  fs.writeFileSync(leadsFilePath, JSON.stringify([]));
+}
 
 export const createAppointment = async (data) => {
   try {
-    const { name, date, time } = data;
+    const leads = JSON.parse(fs.readFileSync(leadsFilePath, 'utf8'));
 
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
-    }
-
-    // Mock saving appointment
     const appointment = {
-      id: Date.now(),
-      name,
-      date,
-      time,
-      status: 'confirmed'
+      ...data,
+      timestamp: new Date().toISOString()
     };
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    leads.push(appointment);
+    fs.writeFileSync(leadsFilePath, JSON.stringify(leads, null, 2));
 
-    return {
-      success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
-    };
+    logger.info(`Appointment scheduled for ${data.contactName} at ${data.companyName}`);
 
+    // Send Green Email
+    await sendEmail({
+      subject: `🟢 SUCCESS: Technical Assessment Scheduled for ${data.companyName}`,
+      text: `Appointment Details:\n
+Contact Name: ${data.contactName}
+Company Name: ${data.companyName}
+Verified Phone: ${data.verifiedPhone}
+Twilio Caller ID: ${data.callerId}
+Match: ${data.verifiedPhone === data.callerId ? 'YES' : 'NO - DIFFERENT NUMBER'}
+Exact Time: ${data.exactTime}`
+    });
+
+    return { success: true };
   } catch (error) {
     logger.error('Error creating appointment:', error);
-    return {
-      success: false,
-      message: 'Failed to create appointment.'
-    };
+    return { success: false, error: 'Failed to create appointment' };
   }
 };
 
 export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
-};
+    return true; // Simplified for now
+}
