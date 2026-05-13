@@ -1,35 +1,58 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import Fastify from 'fastify';
+import fastifyWebsocket from '@fastify/websocket';
+import fastifyFormbody from '@fastify/formbody';
 import { config } from './config/config.js';
 import router from './controllers/router.js';
-import { handleWebSocket } from './controllers/callController.js';
 import logger from './utils/logger.js';
+import { startDrip, stopDrip } from './services/dripService.js';
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/voice/stream' });
+const fastify = Fastify({ logger: false }); // Using custom winston logger
 
-// Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Register plugins
+fastify.register(fastifyFormbody);
+fastify.register(fastifyWebsocket);
 
-// Routes
-app.use('/voice', router);
+// Register routes
+fastify.register(router, { prefix: '/voice' });
 
-// WebSocket handling
-wss.on('connection', (ws, req) => {
-  handleWebSocket(ws, req);
+// Global Error handling
+fastify.setErrorHandler(function (error, request, reply) {
+  logger.error('Fastify error:', error);
+  reply.status(500).send('Internal Server Error');
 });
 
-// Error handling
-app.use((err, req, res, next) => {
-  logger.error(err.stack);
-  res.status(500).send('Something broke!');
+// Graceful shutdown hooks
+fastify.addHook('onClose', (instance, done) => {
+  logger.info('Server closing, stopping services...');
+  stopDrip();
+  done();
 });
 
 // Start server
-const PORT = config.server.port;
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+const start = async () => {
+  try {
+    const PORT = config.server.port;
+    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    logger.info(`Server is running on port ${PORT}`);
+
+    // Start the Smart Drip campaign after successful server startup
+    startDrip();
+
+  } catch (err) {
+    logger.error('Error starting server:', err);
+    process.exit(1);
+  }
+};
+
+start();
+
+// Handle process termination to trigger fastify onClose hook
+const gracefulShutdown = () => {
+  logger.info('Received kill signal, shutting down gracefully');
+  fastify.close().then(() => {
+    process.exit(0);
+  });
+};
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
