@@ -1,47 +1,58 @@
-import dayjs from 'dayjs';
+import fs from 'fs/promises';
+import path from 'path';
 import logger from '../utils/logger.js';
+import { sendSuccessEmail } from './emailService.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const leadsFile = path.resolve('leads.json');
 
-export const createAppointment = async (data) => {
+export const scheduleAppointment = async (data, callerId) => {
   try {
-    const { name, date, time } = data;
+    const { name, company, verifiedPhone, time, notes } = data;
 
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
+    // Validate the Trifecta + Time
+    if (!name || !company || !verifiedPhone || !time) {
+      throw new Error('Missing required information: name, company, verifiedPhone, or time');
     }
 
-    // Mock saving appointment
     const appointment = {
       id: Date.now(),
       name,
-      date,
+      company,
+      verifiedPhone,
       time,
-      status: 'confirmed'
+      notes: notes || '',
+      callerId,
+      createdAt: new Date().toISOString()
     };
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    let leads = [];
+    try {
+      const fileData = await fs.readFile(leadsFile, 'utf8');
+      leads = JSON.parse(fileData);
+    } catch (e) {
+      // If file doesn't exist or is empty, we start with an empty array
+      leads = [];
+    }
+
+    leads.push(appointment);
+    await fs.writeFile(leadsFile, JSON.stringify(leads, null, 2));
+
+    logger.info(`Appointment created for ${name} at ${company} on ${time}`);
+
+    // Trigger success email
+    await sendSuccessEmail(appointment, callerId);
 
     return {
       success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
+      message: `Appointment confirmed for ${name} on ${time}.`,
       appointment
     };
 
   } catch (error) {
-    logger.error('Error creating appointment:', error);
+    logger.error('Error scheduling appointment:', error);
     return {
       success: false,
-      message: 'Failed to create appointment.'
+      message: 'Failed to schedule appointment.'
     };
   }
-};
-
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
 };
