@@ -1,33 +1,53 @@
-import dayjs from 'dayjs';
+import fs from 'fs/promises';
+import path from 'path';
 import logger from '../utils/logger.js';
+import { sendSuccessEmail } from './emailService.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const LEADS_FILE = path.join(process.cwd(), 'leads.json');
 
 export const createAppointment = async (data) => {
   try {
-    const { name, date, time } = data;
+    const { name, company, verifiedPhone, callerId, appointmentTime, needs } = data;
 
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
+    // Validate the Trifecta + Exact Time
+    if (!name || !company || !verifiedPhone || !appointmentTime) {
+      throw new Error('Missing required appointment details (Trifecta + Time)');
     }
 
-    // Mock saving appointment
+    let leads = [];
+    try {
+      const fileData = await fs.readFile(LEADS_FILE, 'utf8');
+      if (fileData) {
+        leads = JSON.parse(fileData);
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+          throw err;
+      }
+    }
+
     const appointment = {
       id: Date.now(),
       name,
-      date,
-      time,
-      status: 'confirmed'
+      company,
+      verifiedPhone,
+      callerId,
+      appointmentTime,
+      needs,
+      status: 'confirmed',
+      timestamp: new Date().toISOString()
     };
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    leads.push(appointment);
+    await fs.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf8');
+
+    logger.info(`Appointment created for ${name} at ${company} for ${appointmentTime}`);
+
+    await sendSuccessEmail(appointment);
 
     return {
       success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
+      message: `Appointment confirmed for ${name} at ${appointmentTime}.`,
       appointment
     };
 
@@ -41,7 +61,6 @@ export const createAppointment = async (data) => {
 };
 
 export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
+    // Basic mock availability
+    return true;
 };
