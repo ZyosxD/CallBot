@@ -94,6 +94,14 @@ TWILIO_PHONE_NUMBER=+1234567890
 # 🌐 Tu URL pública (Ngrok o Dominio real)
 # No olvides incluir 'https://' y sin barra al final
 PUBLIC_URL=https://tu-url-ngrok.ngrok-free.app
+
+# 📧 SMTP Emails
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM=your_email@gmail.com
+SMTP_TO=destination_email@example.com
 ```
 
 ---
