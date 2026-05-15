@@ -1,47 +1,53 @@
-import dayjs from 'dayjs';
 import logger from '../utils/logger.js';
+import { sendSuccessEmail } from './emailService.js';
+import fs from 'fs';
+import path from 'path';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const LEADS_FILE = path.join(process.cwd(), 'leads.json');
 
-export const createAppointment = async (data) => {
+export const scheduleAppointment = async (data, callerId) => {
   try {
-    const { name, date, time } = data;
+    const { contactName, companyName, verifiedPhone, exactTime, notes } = data;
 
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
+    // Validate the Trifecta + Exact Time
+    if (!contactName || !companyName || !verifiedPhone || !exactTime) {
+      throw new Error('Missing required Trifecta information for scheduling.');
     }
 
-    // Mock saving appointment
     const appointment = {
       id: Date.now(),
-      name,
-      date,
-      time,
-      status: 'confirmed'
+      contactName,
+      companyName,
+      verifiedPhone,
+      callerId,
+      exactTime,
+      notes: notes || '',
+      status: 'scheduled'
     };
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    // Save to leads.json
+    let leads = [];
+    if (fs.existsSync(LEADS_FILE)) {
+      const fileContent = fs.readFileSync(LEADS_FILE, 'utf-8');
+      if (fileContent) {
+        leads = JSON.parse(fileContent);
+      }
+    }
+    leads.push(appointment);
+    fs.writeFileSync(LEADS_FILE, JSON.stringify(leads, null, 2));
+
+    logger.info(`Appointment created for ${contactName} from ${companyName} at ${exactTime}`);
+
+    // Send Success Email
+    await sendSuccessEmail(contactName, companyName, verifiedPhone, callerId, exactTime, notes);
 
     return {
       success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
+      message: `Technical Assessment scheduled successfully. Thank you, ${contactName}. A specialist will reach out to you.`
     };
 
   } catch (error) {
     logger.error('Error creating appointment:', error);
-    return {
-      success: false,
-      message: 'Failed to create appointment.'
-    };
+    throw error;
   }
-};
-
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
 };
