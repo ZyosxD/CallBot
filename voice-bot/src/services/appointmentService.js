@@ -1,47 +1,29 @@
-import dayjs from 'dayjs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
+import { sendSuccessEmail } from './emailService.js';
 
-// Simple in-memory storage for appointments (mock database)
-const appointments = [];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const leadsFilePath = path.join(__dirname, '../data/leads.json');
 
-export const createAppointment = async (data) => {
+export const scheduleAppointment = async (appointmentData) => {
   try {
-    const { name, date, time } = data;
-
-    // Basic validation
-    if (!name || !date || !time) {
-      throw new Error('Missing required appointment details');
+    let leads = [];
+    if (fs.existsSync(leadsFilePath)) {
+      const fileData = fs.readFileSync(leadsFilePath, 'utf8');
+      leads = JSON.parse(fileData);
     }
 
-    // Mock saving appointment
-    const appointment = {
-      id: Date.now(),
-      name,
-      date,
-      time,
-      status: 'confirmed'
-    };
+    leads.push(appointmentData);
+    fs.writeFileSync(leadsFilePath, JSON.stringify(leads, null, 2), 'utf8');
 
-    appointments.push(appointment);
-    logger.info(\`Appointment created for \${name} on \${date} at \${time}\`);
+    await sendSuccessEmail(appointmentData);
 
-    return {
-      success: true,
-      message: \`Appointment confirmed for \${name} on \${date} at \${time}.\`,
-      appointment
-    };
-
+    return { success: true, message: "Appointment scheduled and lead saved successfully." };
   } catch (error) {
-    logger.error('Error creating appointment:', error);
-    return {
-      success: false,
-      message: 'Failed to create appointment.'
-    };
+    logger.error('Error scheduling appointment:', error);
+    return { success: false, error: "Failed to schedule appointment." };
   }
-};
-
-export const checkAvailability = async (date, time) => {
-    // Mock availability check
-    const exists = appointments.find(a => a.date === date && a.time === time);
-    return !exists;
 };
